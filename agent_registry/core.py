@@ -82,7 +82,7 @@ class RegistryCore:
         key = self._make_key(name, organization)
         existing = self._agents.get(key)
         if not existing:
-            logger.info(f"Update failed: agent not found ({name}, {organization})")
+            logger.error(f"Update failed: agent not found ({name}, {organization})")
             return False
 
         if partial:
