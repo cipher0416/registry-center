@@ -59,6 +59,10 @@ class RegistryCore:
         Register a new agent. Returns True if successful, False if duplicate.
         Raises ValueError if agent lacks required fields (name, provider.organization).
         """
+        if len(self._agents) > 40:
+            logger.error("Too many agents registered. Please deregister some agents.")
+            return False
+
         if not agent.name or not agent.provider or not agent.provider.organization:
             raise ValueError("Agent must have 'name' and 'provider.organization'")
 
