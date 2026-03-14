@@ -1,14 +1,16 @@
 # agent_registry/core.py
+import asyncio
 import json
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple
+
 from a2a.types import AgentCard
 from loguru import logger
 
+from agent_registry.config import PERSISTENCE_FILE, DEFAULT_LLM_TYPE, MAX_REGISTER_NUM
+from agent_registry.persistence import save_to_file, load_from_file
+from agent_registry.prompts import build_agent_selection_prompt  # assumed to exist
 from common.llm.config.llm_config import LLMType, get_llm_config_by_type
 from common.llm.provider.llm_provider_registry import get_or_create_llm_instance
-from agent_registry.persistence import save_to_file, load_from_file
-from agent_registry.config import PERSISTENCE_FILE, DEFAULT_LLM_TYPE
-from agent_registry.prompts import build_agent_selection_prompt  # assumed to exist
 
 
 class RegistryCore:
@@ -28,7 +30,7 @@ class RegistryCore:
     # ---------- Private helpers ----------
     def _make_key(self, name: str, organization: str) -> Tuple[str, str]:
         """Create a normalized key for indexing."""
-        return (name.strip(), organization.strip())
+        return name.strip(), organization.strip()
 
     def _save(self) -> None:
         """Persist current agents to file."""
@@ -40,12 +42,6 @@ class RegistryCore:
         data_list = load_from_file(self.persistence_file)
         for item in data_list:
             try:
-                # Validate required fields
-                name = item.get("name")
-                provider = item.get("provider")
-                if not name or not provider or not provider.get("organization"):
-                    logger.warning(f"Skipping invalid agent entry: missing name or provider.organization")
-                    continue
                 agent = AgentCard(**item)
                 key = self._make_key(agent.name, agent.provider.organization)
                 self._agents[key] = agent
@@ -54,29 +50,27 @@ class RegistryCore:
         logger.info(f"Loaded {len(self._agents)} agents from persistence.")
 
     # ---------- Public API ----------
-    def register(self, agent: AgentCard) -> bool:
+    async def register(self, agent: AgentCard) -> bool:
         """
         Register a new agent. Returns True if successful, False if duplicate.
         Raises ValueError if agent lacks required fields (name, provider.organization).
         """
-        if len(self._agents) > 40:
-            logger.error("Too many agents registered. Please deregister some agents.")
-            return False
+        async with asyncio.Lock():
+            if len(self._agents) > MAX_REGISTER_NUM:
+                logger.error("Too many agents registered. Please deregister some agents.")
+                return False
 
-        if not agent.name or not agent.provider or not agent.provider.organization:
-            raise ValueError("Agent must have 'name' and 'provider.organization'")
+            key = self._make_key(agent.name, agent.provider.organization)
+            if key in self._agents:
+                logger.info(f"Registration skipped: duplicate agent ({agent.name}, {agent.provider.organization})")
+                return False
 
-        key = self._make_key(agent.name, agent.provider.organization)
-        if key in self._agents:
-            logger.info(f"Registration skipped: duplicate agent ({agent.name}, {agent.provider.organization})")
-            return False
+            self._agents[key] = agent
+            self._save()
+            logger.info(f"Registered agent: {agent.name} (org={agent.provider.organization})")
+            return True
 
-        self._agents[key] = agent
-        self._save()
-        logger.info(f"Registered agent: {agent.name} (org={agent.provider.organization})")
-        return True
-
-    def update(self, name: str, organization: str, updates: Dict[str, Any], partial: bool = True) -> bool:
+    async def update(self, name: str, organization: str, updates: Dict[str, Any], partial: bool = True) -> bool:
         """
         Update an existing agent. The primary key (name, organization) cannot be changed.
         If partial=True, only provided fields are updated (PATCH). If partial=False,
@@ -109,24 +103,26 @@ class RegistryCore:
             logger.error(f"Invalid agent data for update: {e}")
             raise ValueError(f"Invalid agent data: {e}") from e
 
-        # Replace in storage
-        self._agents[key] = new_agent
-        self._save()
-        logger.info(f"Updated agent: {name} (org={organization})")
-        return True
+        async with asyncio.Lock():
+            # Replace in storage
+            self._agents[key] = new_agent
+            self._save()
+            logger.info(f"Updated agent: {name} (org={organization})")
+            return True
 
-    def deregister(self, name: str, organization: str) -> bool:
+    async def deregister(self, name: str, organization: str) -> bool:
         """Remove an agent. Returns True if deleted, False if not found."""
-        key = self._make_key(name, organization)
-        if key not in self._agents:
-            logger.info(f"Deregister failed: agent not found ({name}, {organization})")
-            return False
-        del self._agents[key]
-        self._save()
-        logger.info(f"Deregistered agent: {name} (org={organization})")
-        return True
+        async with asyncio.Lock():
+            key = self._make_key(name, organization)
+            if key not in self._agents:
+                logger.info(f"Deregister failed: agent not found ({name}, {organization})")
+                return False
+            del self._agents[key]
+            self._save()
+            logger.info(f"Deregistered agent: {name} (org={organization})")
+            return True
 
-    def find_by_task(self, task: str) -> List[AgentCard]:
+    async def find_by_task(self, task: str) -> List[AgentCard]:
         """
         Fuzzy search using LLM to match task description with agent capabilities.
         Returns a list of candidate agents (could be empty).
@@ -165,7 +161,7 @@ class RegistryCore:
         logger.info(f"LLM selected {len(result)} agents for task: {task}")
         return result
 
-    def clear_all(self) -> None:
+    async def clear_all(self) -> None:
         """Remove all agents (use with caution)."""
         self._agents.clear()
         self._save()
