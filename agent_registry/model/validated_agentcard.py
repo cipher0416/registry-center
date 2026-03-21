@@ -34,6 +34,10 @@ class ValidatedAgentCard(AgentCard):
     def validate_url(cls, url: str) -> str:
         if len(url) > 1024:
             raise ValueError('The agent url can contain a maximum of 1024 characters.')
+        try:
+            HttpUrl(url)
+        except Exception as e:
+            raise ValueError('Provider URL must be a valid web URL.') from e
         return url
 
     @field_validator('version')
