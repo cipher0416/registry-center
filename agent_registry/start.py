@@ -26,12 +26,12 @@ def get_user_info_from_env():
 
 def record_startup_log():
     server_config = get_conf()
-    audit_logger.log(operation_name=OperationName.START_SERVICE,
-                     level=LogLevel.DANGER,
-                     result=OperationResult.SUCCESS,
-                     object_name=OperatorObject.SERVICE,
-                     details={"ip": server_config.get("ip", ""), "port": server_config.get("port", "")},
-                     user_name=get_user_info_from_env().get('username'))
+    audit_logger.audit(operation_name=OperationName.START_SERVICE,
+                       level=LogLevel.DANGER,
+                       result=OperationResult.SUCCESS,
+                       object_name=OperatorObject.SERVICE,
+                       details={"ip": server_config.get("ip", ""), "port": server_config.get("port", "")},
+                       user_name=get_user_info_from_env().get('username'))
 
 
 app.add_event_handler("startup", record_startup_log)
@@ -91,7 +91,6 @@ class CustomUvicornServer:
             timeout_keep_alive=0,
             timeout_graceful_shutdown=int(self.server_config.get("connection.timeout", 30)),
             log_level="info",
-            # callback_notify=record_startup_log
         )
         server = uvicorn.Server(config)
         server.run()
@@ -109,12 +108,12 @@ def main():
         server = CustomUvicornServer(server_config, conf_obj)
         server.run()
     except Exception as e:
-        audit_logger.log(operation_name=OperationName.START_SERVICE,
-                         level=LogLevel.DANGER,
-                         result=OperationResult.FAILURE,
-                         object_name=OperatorObject.SERVICE,
-                         details={"ip": server_config.get("ip", ""), "port": server_config.get("port", "")},
-                         user_name=get_user_info_from_env().get('username'))
+        audit_logger.audit(operation_name=OperationName.START_SERVICE,
+                           level=LogLevel.DANGER,
+                           result=OperationResult.FAILURE,
+                           object_name=OperatorObject.SERVICE,
+                           details={"ip": server_config.get("ip", ""), "port": server_config.get("port", "")},
+                           user_name=get_user_info_from_env().get('username'))
 
 
 if __name__ == "__main__":

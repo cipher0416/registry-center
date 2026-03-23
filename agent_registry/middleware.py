@@ -1,5 +1,7 @@
 # middleware.py
-from fastapi import Request, HTTPException
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 import asyncio
 
@@ -16,15 +18,27 @@ class ConnectionLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         async with self._lock:
             if self.active_connections >= self.max_connections:
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"The server is at maximum connection capacity. ({self.max_connections})"
+                logger.error(f"The server is at maximum connection capacity. ({self.max_connections})")
+                return JSONResponse(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    content={
+                        "code": status.HTTP_503_SERVICE_UNAVAILABLE,
+                        "message": f"The server is at maximum connection capacity. ({self.max_connections})"
+                    }
                 )
             self.active_connections += 1
 
         try:
             response = await call_next(request)
             return response
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "code": 500,
+                    "message": "Internal Server Error"
+                }
+            )
         finally:
             async with self._lock:
                 self.active_connections -= 1
@@ -46,7 +60,11 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
             )
             return response
         except asyncio.TimeoutError:
-            raise HTTPException(
-                status_code=408,
-                detail=f"Request processing timeout. ({self.timeout_seconds}秒)"
+            logger.error(f"Request processing timeout. ({self.timeout_seconds}秒)")
+            return JSONResponse(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                content={
+                    "code": status.HTTP_504_GATEWAY_TIMEOUT,
+                    "message": f"Request processing timeout. ({self.timeout_seconds}秒)"
+                }
             )
