@@ -1,5 +1,6 @@
 import os
 import sys
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from loguru import logger
@@ -22,6 +23,31 @@ def add_module_logger(module_prefix: str):
     Args:
         module_prefix (str): Prefix for log file names (e.g., "module_name").
     """
+
+    def compress_and_set_permission(source_file):
+        """
+        自定义压缩函数
+        source_file: 需要压缩的日志文件路径
+        返回值: 压缩后的文件路径（或 None）
+        """
+        # 构建压缩文件名
+        zip_file = Path(str(source_file) + ".zip")
+
+        try:
+            # 执行压缩
+            with zipfile.ZipFile(zip_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+                zf.write(source_file, arcname=Path(source_file).name)
+
+            # 压缩完成后立即修改权限
+            os.chmod(zip_file, 0o440)
+
+            # 可选：删除原始日志文件
+            os.remove(source_file)
+
+            return zip_file
+        except Exception as e:
+            logger.error(f"压缩或设置权限失败: {e}")
+            return None
     logger.configure(extra={"request_id": ''})
     logger.remove()
 
@@ -42,12 +68,12 @@ def add_module_logger(module_prefix: str):
         format=LOG_FORMAT,
         level="INFO",
         rotation=lambda message, file: (
-                os.stat(file.name).st_size > 10 * 1024 * 1024
+                os.stat(file.name).st_size > 1
                 or datetime.now(tz=timezone.utc).date() != datetime.fromtimestamp(os.path.getctime(file.name)).date()
         ),
         retention="30 days",
         encoding="utf-8",
-        compression="zip",
+        compression=compress_and_set_permission,
         enqueue=True,
     )
 
@@ -57,12 +83,12 @@ def add_module_logger(module_prefix: str):
         format=LOG_FORMAT,
         level="ERROR",
         rotation=lambda message, file: (
-                os.stat(file.name).st_size > 10 * 1024 * 1024
+                os.stat(file.name).st_size > 1
                 or datetime.now(tz=timezone.utc).date() != datetime.fromtimestamp(os.path.getctime(file.name)).date()
         ),
         retention="30 days",
         encoding="utf-8",
-        compression="zip",
+        compression=compress_and_set_permission,
         enqueue=True,
     )
 
