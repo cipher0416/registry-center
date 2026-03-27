@@ -16,6 +16,8 @@ SKILL_MAX_LENGTH = 4096
 MAX_NUMBER_OF_AGENT_EXTENSION = 10
 AGENT_EXTENSION_MAX_LENGTH = 512
 
+_DANGEROUS_CHARS = re.compile(r'[\x00-\x1F\x7F\x80-\x9F\u2028\u2029\u202D\u202E\u200B\u200C\u200D\uFEFF\u2066-\u2069]')
+
 
 class ValidatedAgentCard(AgentCard):
     """
@@ -118,16 +120,18 @@ class ValidatedAgentCard(AgentCard):
         if len(org) > ORGNIZATION_MAX_LENGTH:
             raise ValueError(f'The agent organization can contain a maximum of {ORGNIZATION_MAX_LENGTH} characters.')
 
-        # 4. 禁止控制字符（防范日志注入）
-        if any(ord(c) < 32 for c in org):  # ASCII 控制字符（0-31）
-            raise ValueError('Agent provider organization contains invalid control characters.')
+        # 4. 危险字符检查
+        if _DANGEROUS_CHARS.search(org):
+            raise ValueError('Agent provider organization contains invalid or dangerous characters.')
 
         # 5. URL 校验
         url = getattr(self.provider, 'url', None)
         if url:
             if len(url) > URL_MAX_LENGTH:
-                raise ValueError(f"The URL for the agent provider's website or relevant documentation can contain "
-                                 f"a maximum of {URL_MAX_LENGTH} characters.")
+                raise ValueError(
+                    f'The URL for the agent provider\'s website or relevant documentation '
+                    f'can contain a maximum of {URL_MAX_LENGTH} characters.'
+                )
             try:
                 HttpUrl(url)
             except Exception as e:
