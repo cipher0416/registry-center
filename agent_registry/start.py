@@ -1,4 +1,5 @@
 # agent_registry/start.py
+import asyncio
 import os
 import ssl
 import sys
@@ -31,9 +32,9 @@ def get_user_info_from_env():
     return user_info
 
 
-def record_startup_log():
+async def record_startup_log():
     server_config = get_conf()
-    audit_handle.handle({
+    await audit_handle.handle({
         "operation_name": OperationName.START_SERVICE,
         "level": LogLevel.DANGER,
         "result": OperationResult.SUCCESS,
@@ -125,14 +126,14 @@ def main():
         server.run()
     except Exception as e:
         logger.error(f"agent_registry server start failed {e}")
-        audit_handle.handle({
+        asyncio.run(audit_handle.handle({
             "object_name": OperatorObject.SERVICE,
             "operation_name": OperationName.START_SERVICE,
             "level": LogLevel.DANGER,
             "result": OperationResult.FAILURE,
             "details": {"ip": server_config.get("ip", ""), "port": server_config.get("port", "")},
             "user_name": get_user_info_from_env().get('username')
-        })
+        }))
         sys.exit(f"agent_registry server start failed: {e}")
 
 

@@ -12,34 +12,35 @@ class BaseHandler(ABC):
     """统一的抽象基类，所有接口实现必须继承此类并实现 handle 方法"""
 
     @abstractmethod
-    def handle(self, *args, **kwargs):
+    async def handle(self, *args, **kwargs):
         """具体业务逻辑由子类实现"""
         pass
 
 
 # ==================== 默认实现 ====================
 class DecryptHandler(BaseHandler):
-    def handle(self, *args, **kwargs):
+    async def handle(self, *args, **kwargs):
         return decrypt(*args)
 
 
 class AuditHandler(BaseHandler):
-    def handle(self, *args, **kwargs):
+    async def handle(self, *args, **kwargs):
         audit_logger.audit(*args)
 
 
 class AuthenticateHandler(BaseHandler):
-    def handle(self, *args, **kwargs):
+    async def handle(self, *args, **kwargs):
         return authenticate(*args)
 
 
 class InsertHandler(BaseHandler):
+
     async def handle(self, *args, **kwargs):
         return await get_registry().register(*args)
 
 
 class QueryHandler(BaseHandler):
-    def handle(self, *args, **kwargs):
+    async def handle(self, *args, **kwargs):
         return get_registry().find_exact(*args)
 
 
@@ -81,4 +82,3 @@ class HandlerRegistry:
         if handler_class is None:
             raise ValueError(f"Unknown interface type: {interface_type}")
         return handler_class()
-
