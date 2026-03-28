@@ -56,21 +56,24 @@ def customized_create_ssl_context(
         ca_certs: str | os.PathLike[str] | None,
         ciphers: str | None,
 ) -> ssl.SSLContext:
-    ctx = ssl.SSLContext(ssl_version)
-    get_password = (lambda: password) if password else None
-    ctx.load_cert_chain(certfile, keyfile, get_password)
-    ctx.verify_mode = ssl.VerifyMode(cert_reqs)
-    if ca_certs:
-        ctx.load_verify_locations(ca_certs)
-        if len(conf_singleton_obj.get_crl_list()) > 0:
-            # 如果有CRL的场景，追加CRL
-            ctx.load_verify_locations(conf_singleton_obj.ssl_crl_file)
-            # 配置为校验CRL模式
-            ctx.verify_flags |= ssl.VERIFY_CRL_CHECK_LEAF
-    if ciphers:
-        ctx.set_ciphers(ciphers)
-
-    return ctx
+    try:
+        ctx = ssl.SSLContext(ssl_version)
+        get_password = (lambda: password) if password else None
+        ctx.load_cert_chain(certfile, keyfile, get_password)
+        ctx.verify_mode = ssl.VerifyMode(cert_reqs)
+        if ca_certs:
+            ctx.load_verify_locations(ca_certs)
+            if len(conf_singleton_obj.get_crl_list()) > 0:
+                # 如果有CRL的场景，追加CRL
+                ctx.load_verify_locations(conf_singleton_obj.ssl_crl_file)
+                # 配置为校验CRL模式
+                ctx.verify_flags |= ssl.VERIFY_CRL_CHECK_LEAF
+        if ciphers:
+            ctx.set_ciphers(ciphers)
+        return ctx
+    except BaseException as e:
+        logger.error(f"customized_create_ssl_context error {e}")
+        raise e
 
 
 # 由于原版config不支持加载crl，因此扩展crl支持
