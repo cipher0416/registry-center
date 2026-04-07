@@ -123,7 +123,7 @@ class CommonContentValidator:
 class CerContentValidator(CommonContentValidator):
 
     def validate(self) -> ValidationResult:
-        # 读取cert证书
+        # 读取cer证书
         try:
             x509_obj = cert_parser.parse_cer_certificate(self.cert_path)
             if len(x509_obj.cert_list) == 0:
@@ -139,7 +139,7 @@ class CerContentValidator(CommonContentValidator):
                                             f"Certificate key algorithm or length does not meet requirements."
                                             f"{self.conf_tip}")
 
-            # 3. 有效期校验，单独跑一把，确保每本证书的有效期对比的currentTime是同一个
+            # 3. 有效期校验，单独跑一把，确保每本证书的有效期对比的currentTime是一个
             if not self.validate_certificate_validity(x509_obj):
                 return ValidationResult(False, f"Certificate is not valid at current time. {self.conf_tip}")
 
@@ -233,7 +233,7 @@ class CRLValidator(CommonContentValidator):
             # 读取CRL
             crl_list = cert_parser.parse_crl_list(self.cert_path)
             self.crl_list_data = crl_list
-            # 1. 校验CRL格式:X.509v2，有扩展的是v2，没有扩展的是v1
+            # 1. 校验CRL格式: X.509v2，有扩展的是v2，没有扩展的是v1
             is_v2 = len(crl_list.extensions) > 0
             if not is_v2:
                 return ValidationResult(False, f"CRL format is not X.509v2. {self.conf_tip}")

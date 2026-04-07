@@ -8,6 +8,7 @@ from common.cert.x509_obj import X509Obj, CertObj
 
 SM2_SIGN = '1.2.156.10197.1.501'
 
+
 def parse_cer_certificate(cert_path: str) -> X509Obj:
     try:
         with open(cert_path, 'rb') as f:
@@ -32,6 +33,7 @@ def parse_cer_certificate(cert_path: str) -> X509Obj:
             exception = CertParseException("Parse certificate error! ")
         raise exception
 
+
 def parse_pem_files(cert_path: str, password: bytes = None) -> PrivateKeyTypes:
     try:
         with open(cert_path, 'rb') as f:
@@ -51,7 +53,7 @@ def parse_pem_files(cert_path: str, password: bytes = None) -> PrivateKeyTypes:
     except Exception as e:
         exception = e
         if not isinstance(e, CertParseException):
-            # 过滤异常信息，防止敏感信息泄漏
+            # 过滤原始信息，防止敏感信息泄漏
             exception = CertParseException("Parse private key error! ")
         raise exception
 
