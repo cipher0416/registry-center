@@ -23,7 +23,7 @@ LOG_FORMAT = (
 
 def add_module_logger(module_prefix: str):
     """
-    Configures logging for a module with console and file outputs
+    Configures logging for a module with console and file outputs.
 
     Args:
         module_prefix (str): Prefix for log file names (e.g., "module_name").
