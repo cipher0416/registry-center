@@ -27,8 +27,8 @@ def load_conf_as_dict(conf_file: str) -> dict:
 
 
 def load_conf_obj(conf_file: str) -> ConfObj:
-    conf_dict = load_conf_as_dict(conf_file)
-    return ConfObj.as_object(conf_dict)
+    config_dict = load_conf_as_dict(conf_file)
+    return ConfObj.as_object(config_dict)
 
 
 def load_cert_password(password_path: str) -> bytes:
@@ -47,7 +47,7 @@ def set_ssl_folder_permissions():
         return
     # 设置目录权限为700
     os.chmod(SSL_PATH, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
-    # 遍历目录中的所有文件，权限设置为600，，不会有递归的情况
+    # 遍历目录中的所有文件，权限设置为600，不会有递归的情况
     for root, _, files in os.walk(SSL_PATH):
         for file_name in files:
             file_path = os.path.join(root, file_name)

@@ -15,16 +15,16 @@ FILE_PERMISSION_MODE = 0o600
 
 class LogLevel:
     DANGER = "Critical"
-    MINOR = 'General'
-    INFO = "Information"
+    MINOR = "General"
+    INFO = "Informational"
 
 
-class OperaitonName:
+class OperationName:
     START_SERVICE = "Start Service"
-    REGISTER_AGENT = 'Register Agent'
+    REGISTER_AGENT = "Register Agent"
 
 
-class OperationObject:
+class OperatorObject:
     SERVICE = "Service"
     AGENT = "Agent"
 
@@ -53,7 +53,7 @@ class AuditLogger:
 
     @staticmethod
     def _load_config() -> Dict[str, Any]:
-        """加载文件配置，若不存在则创建默认配置"""
+        """加载配置文件，若不存在则创建默认配置"""
         root_path = get_root_path()
         log_config = {}
         log_config_path = os.path.join(root_path, "etc", "conf", "log_config.conf")
@@ -64,13 +64,13 @@ class AuditLogger:
     def audit(self, log_entry: Dict[str, Any]):
         """
         :param log_entry: 审计日志条目，包含以下字段：
-                            operation_name: 操作名称
-                            level: 级别
-                            result: 成功/失败
-                            object_name: 操作对象
-                            details: 补充信息
-                            client_ip: 客户端IP
-                            user_name: 用户名
+                          operation_name: 操作名称
+                          level: 级别
+                          result: 成功/失败
+                          object_name: 操作对象
+                          details: 补充信息
+                          client_ip: 客户端IP
+                          user_name: 用户名
         """
         log_data = {
             "time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -89,11 +89,11 @@ class AuditLogger:
         return os.path.getsize(self.log_file) if os.path.exists(self.log_file) else 0
 
     def _rotate_logs(self):
-        """安全日志滚动，避免卡死"""
+        """安全的日志滚动，避免卡死"""
         if self._get_file_size() < self.max_size:
             return
 
-        # 1. 先删除最旧的文件(.back_count + 1)
+        # 1. 先删除最旧的文件（.backup_count + 1）
         oldest = f"{self.log_file}.{self.backup_count + 1}"
         if os.path.exists(oldest):
             try:
@@ -111,13 +111,13 @@ class AuditLogger:
                 except Exception as e:
                     logger.error(f"Warning: failed to rename {src} to {dst}: {e}")
 
-        # 3. 将地区主日志重命名为 .1
+        # 3. 将当前主日志重命名为 .1
         if os.path.exists(self.log_file):
             try:
                 os.rename(self.log_file, f"{self.log_file}.1")
             except Exception as e:
                 logger.error(f"Warning: failed to rename {self.log_file} to {self.log_file}.1: {e}")
-                return  # 如果主文件重命名失败，则不要继续
+                return  # 如果主文件重命名失败，不要继续
 
         # 4. 创建新日志文件
         try:
@@ -132,7 +132,7 @@ class AuditLogger:
             self._rotate_logs()  # 滚动判断
             with open(self.log_file, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
-            # 确保权限(尤其新创建时)
+            # 确保权限（尤其新创建时）
             os.chmod(self.log_file, FILE_PERMISSION_MODE)
 
 

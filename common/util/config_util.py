@@ -7,7 +7,7 @@ from loguru import logger
 
 def get_root_path() -> str:
     """
-    get the root path of component
+    get the root path of the component
     Returns:
         the root path
     """
@@ -17,11 +17,11 @@ def get_root_path() -> str:
     return project_root
 
 
-def get_conf() ->Dict[str, Any]:
+def get_conf() -> Dict[str, Any]:
     """
     Load all server configurations.
     Returns:
-         A dictionary containing all configurations.
+        A dictionary containing all configurations.
     """
     config = {}
     root_path = get_root_path()
@@ -46,9 +46,9 @@ def load_configs(conf_path, config):
             if '#' in line:
                 line = line[:line.index('#')].strip()
 
-                if '=' in line:
-                    key, value = line.split('=', 1)
-                    key = key.strip()
-                    value = value.strip()
+            if '=' in line:
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip()
 
-                    config[key.lower()] = value
+                config[key.lower()] = value

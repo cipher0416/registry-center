@@ -13,7 +13,7 @@ _LOG_DIR.mkdir(exist_ok=True)
 os.chmod(_LOG_DIR, 0o700)
 
 LOG_FORMAT = (
-    "<green>{time:YYYY-MM-DD HH:mm:ss.SSS</green> | "
+    "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
     "<level>{level: ^8}</level> | "
     "process [<cyan>{process}</cyan>]:<cyan>{thread}</cyan> | "
     "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
@@ -23,7 +23,7 @@ LOG_FORMAT = (
 
 def add_module_logger(module_prefix: str):
     """
-    Configures logging for module with console and file outputs
+    Configures logging for a module with console and file outputs.
 
     Args:
         module_prefix (str): Prefix for log file names (e.g., "module_name").
@@ -33,7 +33,7 @@ def add_module_logger(module_prefix: str):
         """
         自定义压缩函数
         source_file: 需要压缩的日志文件路径
-        返回值: 压缩后的文件路径（或 None)
+        返回值: 压缩后的文件路径（或 None）
         """
         # 构建压缩文件名
         zip_file = Path(str(source_file) + ".zip")
@@ -51,7 +51,7 @@ def add_module_logger(module_prefix: str):
 
             return zip_file
         except Exception as e:
-            logger.error(f"压缩或设置权限失败：{e}")
+            logger.error(f"压缩或设置权限失败: {e}")
             return None
 
     logger.configure(extra={"request_id": ''})
@@ -69,23 +69,23 @@ def add_module_logger(module_prefix: str):
 
         # Regular log file
         logger.add(
-            _LOG_DIR / f"{module_prefix}_log_{{time:YYY-MM-DD}}.log",
+            _LOG_DIR / f"{module_prefix}_log_{{time:YYYY-MM-DD}}.log",
             format=LOG_FORMAT,
             level="INFO",
             rotation=lambda message, file: (
-                os.stat(file.name).st_size > 10 * 1024 * 1024
-                or datetime.now(tz=timezone.utc).date() != datetime.fromtimestamp(
+                    os.stat(file.name).st_size > 10 * 1024 * 1024
+                    or datetime.now(tz=timezone.utc).date() != datetime.fromtimestamp(
                 os.path.getctime(file.name)).date()
             ),
             retention="30 days",
-            encoding='utf-8',
+            encoding="utf-8",
             compression=compress_and_set_permission,
             enqueue=True,
         )
 
         # Error log file
         logger.add(
-            _lOG_DIR / f"{module_prefix}_error_{{time:YYYY-MM-DD}}.log",
+            _LOG_DIR / f"{module_prefix}_error_{{time:YYYY-MM-DD}}.log",
             format=LOG_FORMAT,
             level="ERROR",
             rotation=lambda message, file: (
@@ -94,9 +94,10 @@ def add_module_logger(module_prefix: str):
                 os.path.getctime(file.name)).date()
             ),
             retention="30 days",
-            encoding='utf-8',
+            encoding="utf-8",
             compression=compress_and_set_permission,
             enqueue=True,
         )
     finally:
         os.umask(old_mask)
+
