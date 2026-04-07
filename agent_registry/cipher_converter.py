@@ -11,19 +11,19 @@ class CipherConverter:
         'TLS_AES_128_GCM_SHA256': 'TLS_AES_128_GCM_SHA256',
         'TLS_CHACHA20_POLY1305_SHA256': 'TLS_CHACHA20_POLY1305_SHA256',
 
-        # ECDHE-ECDSA套件
+        # ECDHE-ECDSA 套件
         'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384': 'ECDHE-ECDSA-AES256-GCM-SHA384',
         'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256': 'ECDHE-ECDSA-AES128-GCM-SHA256',
 
-        # ECDHE-RSA套件
+        # ECDHE-RSA 套件
         'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384': 'ECDHE-RSA-AES256-GCM-SHA384',
         'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256': 'ECDHE-RSA-AES128-GCM-SHA256',
 
-        # DHE-RSA套件
+        # DHE-RSA 套件
         'TLS_DHE_RSA_WITH_AES_256_GCM_SHA384': 'DHE-RSA-AES256-GCM-SHA384',
         'TLS_DHE_RSA_WITH_AES_128_GCM_SHA256': 'DHE-RSA-AES128-GCM-SHA256',
 
-        # DHE-DSS套件
+        # DHE-DSS 套件
         'TLS_DHE_DSS_WITH_AES_256_GCM_SHA384': 'DHE-DSS-AES256-GCM-SHA384',
         'TLS_DHE_DSS_WITH_AES_128_GCM_SHA256': 'DHE-DSS-AES128-GCM-SHA256',
     }
@@ -63,10 +63,10 @@ class CipherConverter:
             if cipher.startswith('TLS_'):
                 cipher = cipher[4:]
 
-            # 替换 _WITH_ 为_
+            # 替换 _WITH_ 为 -
             cipher = cipher.replace('_WITH_', '-')
 
-            # 替换其他下划线为连字符_
+            # 替换其他下划线为连字符
             cipher = cipher.replace('_', '-')
 
             return cipher

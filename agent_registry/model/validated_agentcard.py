@@ -107,7 +107,7 @@ class ValidatedAgentCard(AgentCard):
 
     @model_validator(mode='after')
     def validate_provider(self):
-        # 1. provide 必须存在
+        # 1. provider 必须存在
         if not self.provider:
             raise ValueError('Agent provider is required.')
 
@@ -120,7 +120,7 @@ class ValidatedAgentCard(AgentCard):
         if len(org) > ORGNIZATION_MAX_LENGTH:
             raise ValueError(f'The agent organization can contain a maximum of {ORGNIZATION_MAX_LENGTH} characters.')
 
-        # 4. 高危字符检查
+        # 4. 危险字符检查
         if _DANGEROUS_CHARS.search(org):
             raise ValueError('Agent provider organization contains invalid or dangerous characters.')
 
@@ -133,6 +133,6 @@ class ValidatedAgentCard(AgentCard):
             try:
                 HttpUrl(url)
             except Exception as e:
-                raise ValueError('Provide URL must be a valid web URL.') from e
+                raise ValueError('Provider URL must be a valid web URL.') from e
 
         return self

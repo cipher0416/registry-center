@@ -65,7 +65,7 @@ class RegistryCore:
     def get_agents(self):
         return self._agents
 
-    # ---------- Public helpers ----------
+    # ---------- Private helpers ----------
     def _save(self) -> None:
         """Persist current agents to file."""
         data = [agent.model_dump() for agent in self._agents.values()]
