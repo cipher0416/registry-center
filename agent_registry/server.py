@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Depends, status, Pat
 from fastapi.responses import JSONResponse
 from loguru import logger
 from limits import strategies, storage, parse_many
+from openai import organization
 from starlette.responses import Response
 
 from agent_registry.config import (
@@ -133,6 +134,7 @@ app.add_middleware(
 
 register_semaphore = anyio.Semaphore(int(config.get(FLOW_CTL_PARALLEL_REGISTER, 1)))
 query_semaphore = anyio.Semaphore(int(config.get(FLOW_CTL_PARALLEL_QUERY, 10)))
+update_semaphore = anyio.Semaphore(int(config.get(FLOW_CTL_PARALLEL_QUERY, 10)))
 
 
 # ---------- Middleware ----------
@@ -219,7 +221,6 @@ async def _check_duplicate_agent(agent: ValidatedAgentCard, registry: RegistryCo
 
 async def _perform_registration(
         agent: ValidatedAgentCard,
-        registry: RegistryCore,
         client_ip: str,
         details: dict,
 ) -> bool:
@@ -264,6 +265,53 @@ async def _perform_registration(
             detail="Internal server error",
         ) from e
 
+async def _perform_update(
+        client_ip: str,
+        name:str,
+        organization:str,
+        data: dict,
+        details:dict
+) -> bool:
+    """执行实际的更新操作，处理可能的 ValueError 和其他异常，并记录对应日志。"""
+    try:
+        update_handle = HandlerRegistry.get_handler(InterfaceType.UPDATE)
+        success = await update_handle.handle(name,organization,data)
+        await audit_handle.handle({
+            "operation_name": OperationName.REGISTER_AGENT,
+            "level": LogLevel.MINOR,
+            "result": OperationResult.SUCCESS,
+            "object_name": OperatorObject.AGENT,
+            "details": data,
+            "client_ip": client_ip
+        })
+        return success
+    except ValueError as e:
+        details["message"] = str(e)
+        await audit_handle.handle({
+            "operation_name": OperationName.REGISTER_AGENT,
+            "level": LogLevel.MINOR,
+            "result": OperationResult.FAILURE,
+            "object_name": OperatorObject.AGENT,
+            "details": details,
+            "client_ip": client_ip
+        })
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
+    except Exception as e:
+        await audit_handle.handle({
+            "operation_name": OperationName.REGISTER_AGENT,
+            "level": LogLevel.MINOR,
+            "result": OperationResult.FAILURE,
+            "object_name": OperatorObject.AGENT,
+            "details": details,
+            "client_ip": client_ip
+        })
+        logger.error(f"Unexpected error in register: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        ) from e
 
 @app.post(
     "/rest/a2a-t/v1/agents/register",
@@ -296,7 +344,7 @@ async def register_agent(
         acquired = True
         await _check_agent_limit(registry, client_ip, details)
         await _check_duplicate_agent(agent, registry, client_ip, details)
-        result = await _perform_registration(agent, registry, client_ip, details)
+        result = await _perform_registration(agent, client_ip, details)
         return JSONResponse(
             content=result,
             status_code=status.HTTP_201_CREATED,
@@ -349,19 +397,34 @@ async def list_agents_exact(
 
 @app.put("/rest/a2a-t/v1/update_agent/{name}", response_model=bool, summary="Full update(replace) an agent")
 async def update_agent(
-        name: str = Path(..., description="Agent name"),
-        organization: str = Query(..., description="Agent organization"),
-        agent_data: AgentCard = Body(..., description="Full agent data"),
+        request: Request,
+        name: str,
+        organization: str,
+        agent_data: ValidatedAgentCard,
         registry: RegistryCore = Depends(get_registry),
 ):
     """
     Fully replace an existing agent. The name and organization in the body must match the path/query.
     Returns True if updated, False if not found.
     """
+    client_ip = request.client.host
+    details = {
+        "agentName": agent_data.name,
+        "organization": agent_data.provider.organization,
+        "url": agent_data.provider.url,
+    }
+    authenticate_handle = HandlerRegistry.get_handler(InterfaceType.AUTHENTICATE)
+    await authenticate_handle.handle(client_ip, request)
+    acquired = False
     try:
         # Convert to dict for update
+        update_semaphore.acquire_nowait()
+        acquired = True
+
+        await _check_agent_limit(registry, client_ip, details)
+
         data = agent_data.model_dump()
-        success = registry.update(name, organization, data)
+        success = await _perform_update(client_ip,name, organization, data,details)
         if not success:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
         return success
@@ -370,7 +433,9 @@ async def update_agent(
     except Exception as e:
         logger.error(f"Unexpected error in full update:{e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error") from e
-
+    finally:
+        if acquired:
+            update_semaphore.release()
 
 @app.delete("/rest/a2a-t/v1/deregister_agent/{name}", response_model=bool, summary="Deregister an agent")
 async def deregister_agent(

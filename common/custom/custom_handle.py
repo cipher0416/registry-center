@@ -43,6 +43,9 @@ class QueryHandler(BaseHandler):
     async def handle(self, *args, **kwargs):
         return get_registry().find_exact(*args)
 
+class UpdateHandler(BaseHandler):
+    async def handle(self, *args, **kwargs):
+        return get_registry().update(*args)
 
 # ==================== 注册表 ====================
 class HandlerRegistry:
@@ -77,6 +80,7 @@ class HandlerRegistry:
             "authenticate": AuthenticateHandler,
             "insert": InsertHandler,
             "query": QueryHandler,
+            "update": UpdateHandler,
         }
         handler_class = default_map.get(interface_type.value)
         if handler_class is None:

@@ -8,3 +8,4 @@ class InterfaceType(Enum):
     AUTHENTICATE = "authenticate"
     INSERT = "insert"
     QUERY = "query"
+    UPDATE = "update"

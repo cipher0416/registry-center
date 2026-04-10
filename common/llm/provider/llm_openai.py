@@ -24,8 +24,8 @@ from common.llm.provider.base_llm import BaseLLM
 from common.llm.provider.llm_provider_registry import registry_provider
 
 
-@registry_provider(LLMType.DEEPSEEK_CHAT)
-class DeepSeekChatLLM(BaseLLM):
+@registry_provider(LLMType.OPENAI_STYLE_LLM)
+class OpenAIStyleLLM(BaseLLM):
     def __init__(self, llm_config: LLMConfig):
         super().__init__(llm_config)
         self.client = OpenAI(
@@ -41,6 +41,6 @@ class DeepSeekChatLLM(BaseLLM):
         )
         completion = self.client.chat.completions.create(
             model=self.llm_config.config_item.model,
-            messages=user_message
+            messages=[user_message]
         )
         return "", completion.choices[0].message.content
