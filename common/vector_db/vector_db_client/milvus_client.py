@@ -38,19 +38,21 @@ class MilvusDBClient(VectorDBClient):
             schema.add_field(field_name="id", datatype=DataType.VARCHAR, is_primary=True, max_length=VARCHAR_MAX_LENGTH,
                              auto_id=False, description="name of organization")
 
-            schema.add_field(field_name="embedding", datatype=DataType.FLOAT_VECTOR, dim=1024, description="vector embedding")
+            schema.add_field(field_name="embedding", datatype=DataType.FLOAT_VECTOR, dim=1024,
+                             description="vector embedding")
 
             for key in entity.keys():
                 if key == "embedding":
                     continue
-                schema.add_field(field_name=key,datatype=DataType.VARCHAR,max_length=VARCHAR_MAX_LENGTH,description=f"{key}字段")
+                schema.add_field(field_name=key, datatype=DataType.VARCHAR, max_length=VARCHAR_MAX_LENGTH,
+                                 description=f"{key}字段")
 
             index_params = self.client.prepare_index_params()
             index_params.add_index(
                 field_name="embedding",
                 index_type="IVF_FLAT",
                 metric_type="COSINE",
-                params={"nlist":128}
+                params={"nlist": 128}
             )
             self.client.create_collection(
                 collection_name=collection_name,
@@ -65,7 +67,6 @@ class MilvusDBClient(VectorDBClient):
         except Exception as e:
             logger.error(f"Error: There is Exception in create collection method: {e}")
             return None
-
 
     def insert_entity(self, data):
         try:
@@ -99,50 +100,80 @@ class MilvusDBClient(VectorDBClient):
             # 3. 获取插入的主键
             insert_id = result.get("ids", [None])[0] if isinstance(result.get("ids"), list) else result.get("ids")
 
+            logger.info(f"Insert success! insert_id:{insert_id}")
+            return insert_id
+
         except Exception as e:
             logger.error(f"Error: There is Exception in insert method: {e}")
             return None
 
-
-def delete_entity(self, data):
-    collection_name = data.get("collection_name")
-    entity = data.get("entity")
-    primary_key = entity["id"]
-    self.client.delete(
-        collection_name=collection_name,
-        ids=[primary_key]
-    )
-
-
-def update_entity(self, data):
-    collection_name = data.get("collection_name")
-    entity = data.get("entity")
-    if not self.client.has_collection(collection_name):
-        self.create_collection(data)
-        logger.info("当前数据库无此collection，已创建此collection")
-    try:
-        self.client.upsert(
+    def delete_entity(self, data):
+        collection_name = data.get("collection_name")
+        entity = data.get("entity")
+        primary_key = entity["id"]
+        self.client.delete(
             collection_name=collection_name,
-            data=entity
+            ids=[primary_key]
         )
-    except MilvusException as e1:
-        logger.error(f"Error: There is MilvusException in update method: {e1}")
-    except Exception as e2:
-        logger.error(f"Error: There is Exception in update method: {e2}")
 
+    def update_entity(self, data):
+        collection_name = data.get("collection_name")
+        entity = data.get("entity")
+        if not self.client.has_collection(collection_name):
+            self.create_collection(data)
+            logger.info("当前数据库无此collection，已创建此collection")
+        try:
+            self.client.upsert(
+                collection_name=collection_name,
+                data=entity
+            )
+        except MilvusException as e1:
+            logger.error(f"Error: There is MilvusException in update method: {e1}")
+        except Exception as e2:
+            logger.error(f"Error: There is Exception in update method: {e2}")
 
-def retrieve_entity(self, data):
-    collection_name = data.get("collection_name")
-    query_embedding = data.get("embedding")
-    try:
-        results = self.client.search(
+    def retrieve_entity(self, data):
+        collection_name = data.get("collection_name")
+        query_embedding = data.get("embedding")
+        try:
+            results = self.client.search(
+                collection_name=collection_name,
+                data=[query_embedding],
+                anns_field="embedding",
+                limit=SEARCH_NUM,
+                output_fields=["id", "name", "description", "provider", "protocolVersion", "version", "url", "iconUrl",
+                               "skills", "capabilities", "defaultInputModes", "defaultOutputModes"],
+                search_params={"metric_type": "COSINE", "param": {"nprobe": 10}}
+            )
+            formatted_results = []
+            if results and len(results) > 0:
+                for hit in results[0]:
+                    formatted_results.append({
+                        "id": hit.get("id"),
+                        "distance": hit.get("distance"),
+                        "entity": restore_string_values(hit.get("entity"))
+                    })
+            return formatted_results
+        except Exception as e:
+            logger.error(f"向量检索失败： {e}")
+            return []
+
+    def query_by_key(self, data):
+        # 构建过滤表达式
+        collection_name = data.get("collection_name")
+        key = data.get("key")
+        value = data.get("value")
+        if isinstance(value, str):
+            filter_expr = f'{key} == "{value}"'
+        else:
+            filter_expr = f'{key} == {value}'
+
+        # 执行查询
+        results = self.client.query(
             collection_name=collection_name,
-            data=[query_embedding],
-            anns_field="embedding",
-            limit=SEARCH_NUM,
+            filter=filter_expr,
             output_fields=["id", "name", "description", "provider", "protocolVersion", "version", "url", "iconUrl",
-                           "skills", "capabilities", "defaultInputModes", "defaultOutputModes"],
-            search_params={"metric_type": "COSINE", "param": {"nprobe": 10}}
+                               "skills", "capabilities", "defaultInputModes", "defaultOutputModes"]
         )
         formatted_results = []
         if results and len(results) > 0:
@@ -153,6 +184,3 @@ def retrieve_entity(self, data):
                     "entity": restore_string_values(hit.get("entity"))
                 })
         return formatted_results
-    except Exception as e:
-        logger.error(f"向量检索失败： {e}")
-        return []

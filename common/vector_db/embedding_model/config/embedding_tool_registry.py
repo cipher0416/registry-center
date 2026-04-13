@@ -28,5 +28,5 @@ EMBEDDING_TOOL_REGISTRY = EmbeddingToolRegistry()
 
 embedding_tool_instance = {}
 
-def create_embedding_tool_instance(config:EmbeddingConfig):
+def get_or_create_embedding_tool_instance(config:EmbeddingConfig):
     return EMBEDDING_TOOL_REGISTRY.get_provider(config.embedding_type)(config.__dict__)
