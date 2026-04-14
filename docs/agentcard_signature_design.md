@@ -256,6 +256,9 @@ class AgentKeysStorage(BaseModel):
 **主要方法**：
 ```python
 class AgentCardValidator:
+    def __init__(self, jwk_fetcher: JWKFetcher):
+        """初始化验证器，注入JWKFetcher"""
+        
     def validate_agent_card(
         self,
         agent_card_data: dict,
@@ -267,29 +270,8 @@ class AgentCardValidator:
     def _extract_signatures(self, agent_card_data: dict) -> List[SignatureObject]:
         """提取signatures字段"""
         
-    def _validate_single_signature(
-        self,
-        signature: SignatureObject,
-        agent_card_data: dict,
-        organization: str,
-        agent_name: str
-    ) -> bool:
-        """验证单个签名"""
-        
-    def _try_backend_key(
-        self,
-        kid: str,
-        organization: str,
-        agent_name: str
-    ) -> Optional[JWK]:
-        """尝试从后台获取公钥"""
-        
-    def _try_temporary_key(
-        self,
-        jku: str,
-        kid: str
-    ) -> Optional[JWK]:
-        """尝试从jku获取临时公钥"""
+    def _decode_protected(self, protected: str) -> Optional[ProtectedHeader]:
+        """解码protected头"""
 ```
 
 ### 5.2 公钥管理器 (PublicKeyManager)
@@ -345,18 +327,47 @@ class PublicKeyManager:
 ### 5.3 JWK获取器 (JWKFetcher)
 
 **职责**：
-- 从jku URL获取JWKS
+- 从后台和jku URL获取JWKS
 - 解析JWKS提取公钥
 - 不缓存获取的公钥
+- 提供多种公钥获取策略
 
 **主要方法**：
 ```python
 class JWKFetcher:
-    def fetch_jwks(self, jku: str) -> JWKS:
+    def __init__(self, public_key_manager: Optional[PublicKeyManager] = None):
+        """初始化，可选注入PublicKeyManager"""
+        
+    def fetch_jwks(self, jku: str) -> Optional[JWKS]:
         """从URL获取JWKS"""
         
-    def find_key_by_kid(self, jwks: JWKS, kid: str) -> Optional[JWK]:
+    def find_key_by_id(self, jwks: JWKS, kid: str) -> Optional[JWK]:
         """根据kid从JWKS中查找公钥"""
+        
+    def fetch_from_backend(
+        self,
+        kid: str,
+        organization: str,
+        agent_name: str
+    ) -> Optional[JWK]:
+        """从后台获取公钥"""
+        
+    def create_backend_key_fetcher(
+        self,
+        organization: str,
+        agent_name: str
+    ) -> Callable[[str, str], Optional[JWK]]:
+        """创建后台公钥获取函数（闭包）"""
+        
+    def create_jku_key_fetcher(self) -> Callable[[str, str], Optional[JWK]]:
+        """创建jku公钥获取函数"""
+        
+    def create_combined_key_fetcher(
+        self,
+        organization: str,
+        agent_name: str
+    ) -> Callable[[str, str], Optional[JWK]]:
+        """创建组合公钥获取函数（优先后台，其次jku）"""
 ```
 
 ## 6. API接口设计
@@ -532,58 +543,87 @@ def get_storage_path(organization: str, agent_name: str) -> str:
 
 ## 8. 签名验证实现设计
 
-### 8.1 使用python-jose进行签名验证
+### 8.1 使用a2a-sdk进行签名验证
+
+本设计完全使用a2a-sdk的签名验证能力，不再依赖python-jose。
 
 ```python
-from jose import jwk, jws
-from jose.exceptions import JWSError, JWKError
+from a2a.utils.signing import create_signature_verifier, InvalidSignaturesError, NoSignatureError
+from a2a.types import AgentCard
 
-def verify_signature_with_jose(
-    protected: str,
-    payload: str,
-    signature: str,
-    public_key_jwk: dict
+def verify_signature_with_a2a_sdk(
+    agent_card: AgentCard,
+    key_fetcher: Callable[[str, str], Optional[JWK]]
 ) -> bool:
     """
-    使用python-jose进行签名验证
+    使用a2a-sdk进行签名验证
     
     Args:
-        protected: base64url编码的protected头
-        payload: AgentCard的JSON字符串（不包含signatures）
-        signature: base64url编码的签名值
-        public_key_jwk: JWK格式的公钥字典
+        agent_card: AgentCard对象
+        key_fetcher: 公钥获取函数，接收(jku, kid)参数
     
     Returns:
         bool: 验证结果
     """
     try:
-        # 构造JWS对象
-        jws = {
-            "protected": protected,
-            "payload": payload,
-            "signature": signature
-        }
-        
-        # 从JWK构造公钥对象
-        public_key = jwk.construct_key(public_key_jwk)
-        
-        # 验证签名
-        jws.verify(
-            jws,
-            public_key,
-            algorithms=['ES256', 'RS256']
-        )
-        
+        verifier = create_signature_verifier(key_fetcher, ['ES256', 'RS256'])
+        verifier(agent_card)
         return True
-    except (JWSError, JWKError) as e:
+    except (NoSignatureError, InvalidSignaturesError) as e:
         logger.error(f"签名验证失败: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"签名验证异常: {e}")
         return False
 ```
 
-### 8.2 完整验签流程实现
+### 8.2 公钥获取函数设计
+
+#### 后台公钥获取函数（闭包）
+
+```python
+def create_backend_key_fetcher(
+    jwk_fetcher: JWKFetcher,
+    organization: str,
+    agent_name: str
+) -> Callable[[str, str], Optional[JWK]]:
+    """
+    创建后台公钥获取函数（闭包）
+    
+    Args:
+        jwk_fetcher: JWKFetcher实例
+        organization: 组织名称
+        agent_name: Agent名称
+    
+    Returns:
+        Callable: 接收(jku, kid)参数，返回JWK对象
+    """
+    def fetch_backend_key(jku: str, kid: str) -> Optional[JWK]:
+        return jwk_fetcher.fetch_from_backend(kid, organization, agent_name)
+    
+    return fetch_backend_key
+```
+
+#### jku公钥获取函数
+
+```python
+def create_jku_key_fetcher(jwk_fetcher: JWKFetcher) -> Callable[[str, str], Optional[JWK]]:
+    """
+    创建jku公钥获取函数
+    
+    Args:
+        jwk_fetcher: JWKFetcher实例
+    
+    Returns:
+        Callable: 接收(jku, kid)参数，返回JWK对象
+    """
+    def fetch_jku_key(jku: str, kid: str) -> Optional[JWK]:
+        jwks = jwk_fetcher.fetch_jwks(jku)
+        if jwks:
+            return jwk_fetcher.find_key_by_id(jwks, kid)
+        return None
+    
+    return fetch_jku_key
+```
+
+### 8.3 完整验签流程实现
 
 ```python
 class AgentCardValidator:
@@ -613,10 +653,8 @@ class AgentCardValidator:
                 error_message="Signatures field is required"
             )
         
-        # 步骤2：构造payload（不包含signatures）
-        agent_card_copy = agent_card_data.copy()
-        del agent_card_copy["signatures"]
-        payload = json.dumps(agent_card_copy, sort_keys=True)
+        # 步骤2：构造AgentCard对象
+        agent_card = AgentCard(**agent_card_data)
         
         # 步骤3：遍历signatures数组
         for sig_obj in signatures:
@@ -625,32 +663,26 @@ class AgentCardValidator:
             kid = protected_header.kid
             
             # 步骤4：优先从后台获取公钥
-            backend_key = self._try_backend_key(kid, organization, agent_name)
+            backend_key_fetcher = self.jwk_fetcher.create_backend_key_fetcher(organization, agent_name)
+            backend_key = backend_key_fetcher("", kid)
+            
             if backend_key:
-                # 使用后台公钥验签
-                if self._verify_with_jose(
-                    sig_obj.protected,
-                    payload,
-                    sig_obj.signature,
-                    backend_key
-                ):
+                # 使用a2a-sdk验签
+                verifier = create_signature_verifier(backend_key_fetcher, ['ES256', 'RS256'])
+                try:
+                    verifier(agent_card)
                     return ValidationResult(is_valid=True)
+                except (NoSignatureError, InvalidSignaturesError):
+                    pass
             
             # 步骤5：从jku获取临时公钥
-            if hasattr(protected_header, 'jku'):
-                temporary_key = self._try_temporary_key(
-                    protected_header.jku,
-                    kid
-                )
-                if temporary_key:
-                    # 使用临时公钥验签
-                    if self._verify_with_jose(
-                        sig_obj.protected,
-                        payload,
-                        sig_obj.signature,
-                        temporary_key
-                    ):
-                        return ValidationResult(is_valid=True)
+            jku_key_fetcher = self.jwk_fetcher.create_jku_key_fetcher()
+            verifier = create_signature_verifier(jku_key_fetcher, ['ES256', 'RS256'])
+            try:
+                verifier(agent_card)
+                return ValidationResult(is_valid=True)
+            except (NoSignatureError, InvalidSignaturesError):
+                pass
         
         # 所有签名都验证失败
         return ValidationResult(
@@ -742,7 +774,7 @@ class AgentCardValidator:
 1. 实现公钥管理器（文件存储）
 2. 实现JWK获取器
 3. 实现AgentCard验证器
-4. 集成python-jose签名验证
+4. 集成a2a-sdk签名验证
 
 ### Phase 2: API接口
 1. 实现公钥管理API
@@ -779,14 +811,16 @@ class AgentCardValidator:
 
 ## 16. 总结
 
-本设计方案基于JWS (JSON Web Signature)标准，使用python-jose库实现AgentCard的验签功能，主要特点：
+本设计方案基于JWS (JSON Web Signature)标准，完全使用a2a-sdk的签名验证能力，不再依赖python-jose，主要特点：
 
 1. **灵活的验签策略**：支持配置公钥和临时公钥双重验签
 2. **密钥轮转支持**：支持多签名字段，平滑密钥轮转
 3. **安全优先**：默认强制验签，支持动态公钥获取
-4. **易于集成**：使用python-jose简化签名验证
+4. **易于集成**：使用a2a-sdk简化签名验证
 5. **可扩展性**：支持多种签名算法和公钥来源
 6. **文件存储**：基于文件系统的公钥管理
 7. **Agent隔离**：通过organization和agent-name实现Agent级别的公钥隔离
+8. **闭包设计**：使用函数闭包传递organization和agent_name参数
+9. **统一接口**：所有公钥获取函数都符合a2a-sdk的接口规范
 
 该设计满足所有需求，并考虑了安全性、性能和可维护性。

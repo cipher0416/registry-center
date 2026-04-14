@@ -1,9 +1,9 @@
-import json
 import requests
-from typing import Optional
+from typing import Optional, Callable
 from loguru import logger
 
 from agent_registry.signature.models import JWK, JWKS
+from agent_registry.signature.public_key_manager import PublicKeyManager
 
 
 class JWKFetcher:
@@ -11,9 +11,10 @@ class JWKFetcher:
     
     REQUEST_TIMEOUT = 10  # 10秒超时
     
-    def __init__(self):
+    def __init__(self, public_key_manager: Optional[PublicKeyManager] = None):
         self.session = requests.Session()
         self.session.timeout = self.REQUEST_TIMEOUT
+        self.public_key_manager = public_key_manager
     
     def fetch_jwks(self, jku: str) -> Optional[JWKS]:
         """
@@ -28,7 +29,6 @@ class JWKFetcher:
         try:
             logger.info(f"Fetching JWKS from: {jku}")
             
-            # 验证URL使用HTTPS
             if not jku.startswith('https://'):
                 logger.error(f"JKU must use HTTPS: {jku}")
                 return None
@@ -64,7 +64,7 @@ class JWKFetcher:
         """
         try:
             for key in jwks.keys:
-                if key.kid == kid:
+                if (key.kid == kid):
                     logger.info(f"Found key by kid: {kid}")
                     return key
             
@@ -73,3 +73,99 @@ class JWKFetcher:
         except Exception as e:
             logger.error(f"Error while finding key: {e}")
             return None
+    
+    def fetch_from_backend(
+        self,
+        kid: str,
+        organization: str,
+        agent_name: str
+    ) -> Optional[JWK]:
+        """
+        从后台获取公钥
+        
+        Args:
+            kid: 密钥ID
+            organization: 组织名称
+            agent_name: Agent名称
+        
+        Returns:
+            Optional[JWK]: JWK对象，不存在返回None
+        """
+        try:
+            if not self.public_key_manager:
+                logger.warning("PublicKeyManager not configured")
+                return None
+            
+            jwk = self.public_key_manager.get_public_key(organization, agent_name, kid)
+            if jwk:
+                logger.info(f"Found backend key for kid: {kid}")
+                return jwk
+            else:
+                logger.info(f"Backend key not found for kid: {kid}")
+                return None
+        except Exception as e:
+            logger.error(f"Failed to get backend key: {e}")
+            return None
+    
+    def create_backend_key_fetcher(
+        self,
+        organization: str,
+        agent_name: str
+    ) -> Callable[[str, str], Optional[JWK]]:
+        """
+        创建后台公钥获取函数（闭包），这里的organization和agent_name两个参数由外层函数提供，闭包函数作为key_provider给a2a-sdk调用
+        
+        Args:
+            organization: 组织名称
+            agent_name: Agent名称
+        
+        Returns:
+            Callable: 接收(jku, kid)参数，返回JWK对象
+        """
+        def fetch_backend_key(jku: str, kid: str) -> Optional[JWK]:
+            return self.fetch_from_backend(kid, organization, agent_name)
+        
+        return fetch_backend_key
+    
+    def create_jku_key_fetcher(self) -> Callable[[str, str], Optional[JWK]]:
+        """
+        创建jku公钥获取函数
+        
+        Returns:
+            Callable: 接收(jku, kid)参数，返回JWK对象
+        """
+        def fetch_jku_key(jku: str, kid: str) -> Optional[JWK]:
+            jwks = self.fetch_jwks(jku)
+            if jwks:
+                return self.find_key_by_id(jwks, kid)
+            return None
+        
+        return fetch_jku_key
+    
+    def create_combined_key_fetcher(
+        self,
+        organization: str,
+        agent_name: str
+    ) -> Callable[[str, str], Optional[JWK]]:
+        """
+        创建组合公钥获取函数（优先后台，其次jku）
+        
+        Args:
+            organization: 组织名称
+            agent_name: Agent名称
+        
+        Returns:
+            Callable: 接收(jku, kid)参数，返回JWK对象
+        """
+        def fetch_combined_key(jku: str, kid: str) -> Optional[JWK]:
+            backend_key = self.fetch_from_backend(kid, organization, agent_name)
+            if backend_key:
+                return backend_key
+            
+            jwks = self.fetch_jwks(jku)
+            if jwks:
+                return self.find_key_by_id(jwks, kid)
+            
+            return None
+        
+        return fetch_combined_key
