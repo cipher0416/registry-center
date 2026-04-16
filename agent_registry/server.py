@@ -30,7 +30,7 @@ import anyio
 from a2a.types import AgentCard
 from fastapi import FastAPI, HTTPException, Query, Request, Depends, status
 from fastapi.responses import JSONResponse
-from google.protobuf.json_format import Parse
+from google.protobuf.json_format import Parse, MessageToDict
 from loguru import logger
 from limits import strategies, storage, parse_many
 from starlette.responses import Response
@@ -351,7 +351,6 @@ async def list_agents_exact(
         try:
             query_handle = HandlerRegistry.get_handler(InterfaceType.QUERY)
             agents = await query_handle.handle(name, organization)
-            from google.protobuf.json_format import MessageToDict
             return [MessageToDict(card) for card in agents]
         except Exception as e:
             logger.error(f"Error in exact search: {e}")
