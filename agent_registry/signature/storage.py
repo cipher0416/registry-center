@@ -7,7 +7,7 @@ from loguru import logger
 class StoragePath:
     """存储路径工具类"""
     
-    BASE_DIR = "/etc/sign_verify/jwks"
+    BASE_DIR = os.path.join(Path(__file__).parent.parent.parent, "etc", "sign_verify", "jwks")
     
     @staticmethod
     def get_storage_path(organization: str, agent_name: str) -> str:
