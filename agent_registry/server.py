@@ -48,6 +48,7 @@ from agent_registry.core import RegistryCore
 from agent_registry.registry_instance import get_registry
 from agent_registry.middleware import ConnectionLimitMiddleware, TimeoutMiddleware
 from agent_registry.model.validated_agentcard import ValidatedAgentCard
+from agent_registry.signature.validator_instance import get_agent_card_validator
 from common.custom.custom_handle import HandlerRegistry
 from common.custom.interface_type import InterfaceType
 from common.log.audit_logger import OperationResult, LogLevel, OperatorObject, OperationName
@@ -368,6 +369,16 @@ async def register_agent(
     await authenticate_handle.handle(client_ip, request)
     acquired = False
     try:
+        # 验证AgentCard签名
+        signature_validator = get_agent_card_validator()
+        validation_result = signature_validator.validate_agent_card(agent)
+        if not validation_result.is_valid:
+            logger.error(f"AgentCard signature validation failed: {validation_result.error_message}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Signature validation failed: {validation_result.error_message}"
+            )
+
         register_semaphore.acquire_nowait()
         acquired = True
         await _check_agent_limit(registry, client_ip, details)
@@ -445,6 +456,16 @@ async def update_agent(
     await authenticate_handle.handle(client_ip, request)
     acquired = False
     try:
+        # 验证AgentCard签名
+        signature_validator = get_agent_card_validator()
+        validation_result = signature_validator.validate_agent_card(agent_data)
+        if not validation_result.is_valid:
+            logger.error(f"AgentCard signature validation failed: {validation_result.error_message}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Signature validation failed: {validation_result.error_message}"
+            )
+
         # Convert to dict for update
         update_semaphore.acquire_nowait()
         acquired = True
