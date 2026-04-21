@@ -107,11 +107,11 @@ install_service() {
     CURRENT_GID=$(id -g "$CURRENT_USER")
     
     if [ -z "$PYTHON_PATH" ]; then
-        PYTHON_PATH=$(which python 2>/dev/null)
+        PYTHON_PATH="${INSTALL_DIR}/venv/bin/python3"
     fi
     
-    if [ -z "$PYTHON_PATH" ]; then
-        echo -e "${RED}Error: Python not found. Please specify --python=PATH or set PYTHON_PATH in config${NC}"
+    if [ ! -f "$PYTHON_PATH" ]; then
+        echo -e "${RED}Error: Python not found at $PYTHON_PATH. Please create venv or specify --python=PATH${NC}"
         exit 1
     fi
     
