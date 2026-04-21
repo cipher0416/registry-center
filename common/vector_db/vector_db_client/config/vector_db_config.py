@@ -25,7 +25,7 @@ def convert_vectordb_type(vectordb_type:str)->VectorDBType:
     for member in VectorDBType:
         if member.value == vectordb_type:
             return member
-    return VectorDBType.CustomVDB
+    return VectorDBType.Milvus
 
 class VectorDBConfig:
     vectordb_type:VectorDBType
