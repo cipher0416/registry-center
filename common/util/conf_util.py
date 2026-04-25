@@ -17,6 +17,7 @@ import asyncio
 import configparser
 import os
 import platform
+import re
 import stat
 
 from loguru import logger
@@ -25,6 +26,7 @@ from common.custom.custom_handle import HandlerRegistry
 from common.custom.interface_type import InterfaceType
 from common.util import cipher_util
 from common.util.conf_obj import ConfObj
+from common.util.config_util import get_root_path
 from common.util.constant_param import CONFIG_FILE_PATH, SSL_PATH
 
 decrypt_handle = HandlerRegistry.get_handler(InterfaceType.DECRYPT)
@@ -70,9 +72,6 @@ def set_ssl_folder_permissions():
             os.chmod(file_path, stat.S_IRUSR | stat.S_IWUSR)
 
 
-from common.util.config_util import get_root_path
-
-
 def get_persistence_conf() -> dict:
     """
     Read persistence configuration file with environment variable substitution.
@@ -94,7 +93,6 @@ def _resolve_env_vars(conf: dict) -> dict:
     Resolve environment variables in config values.
     Format: ${ENV_VAR:default_value}
     """
-    import re
     resolved = {}
     for key, value in conf.items():
         if isinstance(value, str):

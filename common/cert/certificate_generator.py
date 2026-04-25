@@ -12,9 +12,7 @@ from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
 from common.cert.password_generator import PasswordGenerator
 from common.util.cipher_util import encrypt, DEFAULT_ENCODING
 from common.log.audit_logger import audit_logger, LogLevel, OperationResult, OperationName
-
-
-
+from loguru import logger
 
 
 class CertificateGenerator:
@@ -58,6 +56,7 @@ class CertificateGenerator:
 
             return True
         except Exception as e:
+            logger.error(f"Certificate generation failed: {e}")
             return False
 
     def generate_self_signed_cert(self, cert_dir: str, cert_usage: str, password: str) -> bool:
@@ -85,6 +84,7 @@ class CertificateGenerator:
 
             return True
         except Exception as e:
+            logger.error(f"Self-signed certificate generation failed: {e}")
             return False
 
     def _check_certificates_exists(self, cert_dir: str) -> bool:

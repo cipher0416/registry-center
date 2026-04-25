@@ -24,7 +24,7 @@ from pydantic import HttpUrl
 _NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*$')
 
 NAME_MAX_LENGTH = 100
-ORGNIZATION_MAX_LENGTH = 100
+ORGANIZATION_MAX_LENGTH = 100
 DESCRIPTION_MAX_LENGTH = 1000
 URL_MAX_LENGTH = 1024
 VERSION_MAX_LENGTH = 50
@@ -134,10 +134,10 @@ def validate_provider(provider: AgentProvider):
             detail='Agent provider organization is required and cannot be empty.')
 
     # 3. Length limit
-    if len(org) > ORGNIZATION_MAX_LENGTH:
+    if len(org) > ORGANIZATION_MAX_LENGTH:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f'The agent organization can contain a maximum of {ORGNIZATION_MAX_LENGTH} characters.')
+            detail=f'The agent organization can contain a maximum of {ORGANIZATION_MAX_LENGTH} characters.')
 
     # 4. Dangerous character check
     if _DANGEROUS_CHARS.search(org):

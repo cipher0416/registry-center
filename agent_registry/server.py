@@ -199,7 +199,8 @@ async def security_middleware(request: Request, call_next):
 
                 body_chunks.append(chunk)
             request._body = b''.join(body_chunks)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error reading request body: {e}")
             return Response(
                 content="Bad Request",
                 status_code=status.HTTP_400_BAD_REQUEST,

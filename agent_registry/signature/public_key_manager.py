@@ -1,7 +1,6 @@
 import os
 import json
 import datetime
-import hashlib
 from typing import Optional, List
 from loguru import logger
 
@@ -11,12 +10,12 @@ from agent_registry.signature.storage import StoragePath
 
 class PublicKeyManager:
     """Public key manager"""
-    
+
     MAX_KEYS_PER_AGENT = 5
-    
+
     def __init__(self):
         self._base_dir = StoragePath.BASE_DIR
-    
+
     def add_public_keys(
         self,
         organization: Optional[str],
@@ -79,7 +78,7 @@ class PublicKeyManager:
         except Exception as e:
             logger.error(f"Failed to add public keys: {e}")
             raise
-    
+
     def remove_public_key(
         self,
         organization: Optional[str],
@@ -135,7 +134,7 @@ class PublicKeyManager:
         except Exception as e:
             logger.error(f"Failed to delete public key: {e}")
             return False
-    
+
     def get_all_public_keys(
         self,
         organization: Optional[str],
@@ -165,7 +164,7 @@ class PublicKeyManager:
         except Exception as e:
             logger.error(f"Failed to get public keys: {e}")
             return JWKS(keys=[])
-    
+
     def get_public_key(
         self,
         organization: Optional[str],
@@ -197,7 +196,7 @@ class PublicKeyManager:
         except Exception as e:
             logger.error(f"Failed to get public key: {e}")
             return None
-    
+
     def _load_keys(self, storage_path: str) -> List[JWK]:
         """
         Load public keys from file.
@@ -214,7 +213,7 @@ class PublicKeyManager:
         except Exception as e:
             logger.error(f"Failed to load public keys: {e}")
             return []
-    
+
     def _load_storage_obj(self, storage_path: str) -> AgentKeysStorage:
         """
         Load storage object from file.
@@ -236,7 +235,7 @@ class PublicKeyManager:
         except Exception as e:
             logger.error(f"Failed to load storage object: {e}")
             raise
-    
+
     def _save_keys(self, storage_path: str, storage_obj: AgentKeysStorage) -> None:
         """
         Save public keys to file.

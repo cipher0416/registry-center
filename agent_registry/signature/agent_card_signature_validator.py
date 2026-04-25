@@ -47,7 +47,7 @@ class AgentCardSignatureValidator:
         except Exception as e:
             logger.error(f"Failed to load signature validation config: {e}")
             return True  # Validation enabled by default
-    
+
     def validate_agent_card(
         self,
         agent_card: ValidatedAgentCard
@@ -66,11 +66,11 @@ class AgentCardSignatureValidator:
             if not self._signature_validation_enabled:
                 logger.info("Signature validation is disabled, skipping validation")
                 return ValidationResult(is_valid=True)
-            
+
             organization = agent_card.provider.organization
             agent_name = agent_card.name
             provider_url = agent_card.provider.url
-            
+
             agent_card_data = agent_card.model_dump()
             signatures = self._extract_signatures(agent_card_data)
             if not signatures:
@@ -90,9 +90,9 @@ class AgentCardSignatureValidator:
                 if not protected_header:
                     logger.warning(f"Failed to decode protected header: {sig_obj.protected}")
                     continue
-                
+
                 kid = protected_header.kid
-                
+
                 backend_key_fetcher = self.jwk_fetcher.create_backend_key_fetcher(organization, agent_name, provider_url)
                 backend_key = backend_key_fetcher(kid, "")  # jku not needed for backend keys, use empty string
 
@@ -130,7 +130,7 @@ class AgentCardSignatureValidator:
                     "total_signatures": len(signatures)
                 }
             )
-            
+
         except Exception as e:
             logger.error(f"AgentCard validation error: {e}")
             return ValidationResult(
@@ -139,32 +139,32 @@ class AgentCardSignatureValidator:
                 error_message="Internal server error",
                 details={"error": str(e)}
             )
-    
+
     def _extract_signatures(self, agent_card_data: dict) -> List[SignatureObject]:
         """Extract signatures field"""
         try:
             signatures = agent_card_data.get("signatures")
             if not signatures:
                 return []
-            
+
             signature_objects = []
             for sig in signatures:
                 if not isinstance(sig, dict):
                     logger.warning(f"Invalid signature format: {sig}")
                     continue
-                
+
                 if "protected" not in sig or "signature" not in sig:
                     logger.warning("Missing required fields in signature")
                     continue
-                
+
                 signature_objects.append(SignatureObject(**sig))
-            
+
             return signature_objects
-            
+
         except Exception as e:
             logger.error(f"Failed to extract signatures: {e}")
             return []
-    
+
     def _decode_protected(self, protected: str) -> Optional[ProtectedHeader]:
         """Decode protected header"""
         try:
@@ -172,12 +172,12 @@ class AgentCardSignatureValidator:
             if padding != 4:
                 protected += '=' * padding
             decoded_bytes = base64.urlsafe_b64decode(protected)
-            
+
             protected_json = decoded_bytes.decode('utf-8')
             protected_dict = json.loads(protected_json)
-            
+
             return ProtectedHeader(**protected_dict)
-            
+
         except Exception as e:
             logger.error(f"Failed to decode protected header: {e}")
             return None
