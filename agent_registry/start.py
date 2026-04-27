@@ -26,6 +26,7 @@ from uvicorn import config
 
 from agent_registry.cipher_converter import CipherConverter
 from agent_registry.config import CONN_TIMEOUT, TLS_CIPHER, FORWARDED_ALLOW_IPS
+from agent_registry.internal.registry_center_internal_service import RegistryCenterInternalService
 from agent_registry.server import app
 from common.cert.cert_validater import CertValidator
 from common.custom.custom_handle import HandlerRegistry
@@ -134,9 +135,7 @@ class CustomUvicornServer:
 def start_internal_service():
     global _internal_service, _internal_thread
     try:
-        from agent_registry.internal.registry_service import RegistryCenterService
-
-        _internal_service = RegistryCenterService()
+        _internal_service = RegistryCenterInternalService()
         _internal_thread = threading.Thread(target=_internal_service.start, daemon=True)
         _internal_thread.start()
         logger.info("Internal service started on UDS socket: run/registry-center/internal.sock")
