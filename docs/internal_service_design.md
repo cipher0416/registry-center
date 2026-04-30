@@ -494,29 +494,32 @@ async def list_agents(name: Optional[str] = None, organization: Optional[str] = 
 agent_registry/
 ├── internal/                     # 内部交互服务
 │   ├── __init__.py
-│   ├── registry_service.py       # 统一UDS服务端
-│   ├── request_dispatcher.py     # 请求分发器
-│   ├── permission_checker.py     # 权限检查器
+│   ├── registry_center_internal_service.py  # UDS服务端
 │   │
 │   ├── handlers/                 # 操作处理器
 │   │   ├── __init__.py
 │   │   ├── base_handler.py       # Handler基类
-│   │   ├── approval_handler.py   # 审核处理器
-│   │   ├── config_handler.py     # 配置处理器
-│   │   ├── stats_handler.py      # 统计处理器
-│   │   ├── query_handler.py      # 查询处理器
-│   │   └── deregister_handler.py # 注销处理器（后续扩充）
-│   │
-│   ├── client/                   # 客户端
-│   │   ├── __init__.py
-│   │   ├── registry_client.py    # 统一客户端类
-│   │   └── cli_registry.py       # 命令行工具
+│   │   └── approval_handler.py   # 审核处理器
 │   │
 │   └── protocols/                # 协议定义
 │       ├── __init__.py
 │       ├── request.py            # 请求协议
 │       ├── response.py           # 响应协议
 │       └── actions.py            # action定义
+│
+├── cli/                          # CLI工具
+│   ├── __init__.py
+│   ├── __main__.py               # CLI入口
+│   ├── core.py                   # CLI核心引擎
+│   ├── base.py                   # 命令基类
+│   ├── registry.py               # 命令注册
+│   ├── client.py                 # HTTP客户端
+│   ├── uds_client.py             # UDS客户端（内部服务）
+│   └── commands/                 # 命令实现
+│       ├── __init__.py
+│       ├── agent.py              # Agent管理命令
+│       ├── status.py             # 状态查询命令
+│       └── approval.py           # 审核命令
 ```
 
 **服务端代码结构：**
@@ -810,29 +813,21 @@ srw-rw---- 1 root registry_group 0 Jan 1 12:00 run/registry-center/internal.sock
 agent_registry/
 ├── internal/                     # 内部交互服务
 │   ├── __init__.py
-│   ├── registry_service.py       # 统一UDS服务端
-│   ├── request_dispatcher.py     # 请求分发器
-│   ├── permission_checker.py     # 权限检查器
+│   ├── registry_center_internal_service.py  # UDS服务端
 │   │
 │   ├── handlers/                 # 操作处理器
 │   │   ├── __init__.py
 │   │   ├── base_handler.py       # Handler基类
-│   │   ├── approval_handler.py      # 审核处理器
-│   │   ├── config_handler.py     # 配置处理器
-│   │   ├── stats_handler.py      # 统计处理器
-│   │   ├── query_handler.py      # 查询处理器
-│   │   └── deregister_handler.py # 注销处理器（后续扩充）
-│   │
-│   ├── client/                   # 客户端
-│   │   ├── __init__.py
-│   │   ├── registry_client.py    # 统一客户端类
-│   │   └── cli_registry.py       # 命令行工具
+│   │   └── approval_handler.py   # 审核处理器
 │   │
 │   └── protocols/                # 协议定义
 │       ├── __init__.py
 │       ├── request.py            # 请求协议
 │       ├── response.py           # 响应协议
 │       └── actions.py            # action定义
+│
+├── cli/                          # CLI工具
+│   ├── uds_client.py             # UDS客户端（内部服务）
 ```
 
 #### 3.1.2 修改文件
@@ -1433,7 +1428,7 @@ def test_approval_uds_interface():
    {"success":true, "status":"registered", "message":"Agent registered, waiting for approval"}
    
    # 步骤3：调用审核接口
-   python -m agent_registry.internal.client.cli_registry approval TestAgent TestOrg
+   python -m agent_registry.cli approval -n TestAgent -o TestOrg
    
    # 预期响应：
    {"success":true, "status":"published", "message":"Agent approval successful"}
@@ -1459,7 +1454,7 @@ def test_approval_uds_interface():
    {"success":true, "status":"published", "message":"Agent registered and published"}
    
    # 步骤3：尝试调用审核接口（应报错）
-   python -m agent_registry.internal.client.cli_registry approval TestAgent TestOrg
+   python -m agent_registry.cli approval -n TestAgent -o TestOrg
    
    # 预期响应：
    {"success":false, "error":"Approval function is disabled"}
@@ -1504,7 +1499,7 @@ def test_approval_uds_interface():
    # 预期：报错，提示先发布已注册Agent
    
    # 步骤3：审核Agent1
-   python -m agent_registry.internal.client.cli_registry approval Agent1 Org
+   python -m agent_registry.cli approval -n Agent1 -o Org
    
    # 预期：status变为"published"
    
@@ -1521,14 +1516,14 @@ def test_approval_uds_interface():
 
 ```bash
 # 测试1：普通用户无法访问内部交互接口
-python -m agent_registry.internal.client.cli_registry approval TestAgent TestOrg
+python -m agent_registry.cli approval -n TestAgent -o TestOrg
 
 # 预期：
 Permission denied: You don't have permission to access registry center
 
 # 测试2：registry_group组成员可以访问
 sudo usermod -aG registry_group $USER
-python -m agent_registry.internal.client.cli_registry approval TestAgent TestOrg
+python -m agent_registry.cli approval -n TestAgent -o TestOrg
 
 # 预期：成功调用审核接口
 ```
@@ -1589,17 +1584,16 @@ python -m agent_registry.init
 # 查询所有"已发布"状态的Agent（HTTP接口只返回已发布Agent）
 curl http://localhost:5000/rest/a2a-t/v1/agents/query
 
-# 查询已注册状态的Agent需要通过UDS内部接口
-python -m agent_registry.internal.client.cli_registry stats registered
+# 查询Agent状态通过HTTP接口（仅返回published状态）
 ```
 
 ### 5.3 批量审核
 
 ```python
 # 批量审核所有"已注册"状态的Agent
-from agent_registry.internal.client.registry_client import RegistryClient
+from agent_registry.cli.uds_client import get_uds_client
 
-client = RegistryClient()
+client = get_uds_client()
 
 # 获取所有"已注册"Agent
 registered_agents = registry.get_agents_by_status('registered')
@@ -1607,7 +1601,7 @@ registered_agents = registry.get_agents_by_status('registered')
 # 批量审核
 for agent in registered_agents:
     result = client.approval_agent(agent.name, agent.provider.organization)
-    print(f"{agent.name}: {result['message']}")
+    print(f"{agent.name}: {result.get('message', 'approved')}")
 ```
 
 ### 5.4 监控和日志
@@ -1628,20 +1622,6 @@ await approval_handle.handle({
     },
     "user_name": "admin"
 })
-```
-
-#### 5.4.2 审核统计
-
-```bash
-# 统计Agent状态分布（通过UDS内部接口）
-python -m agent_registry.internal.client.cli_registry stats all
-
-# 预期响应：
-{
-  "total": 100,
-  "registered": 20,
-  "published": 80
-}
 ```
 
 ## 6. 总结
