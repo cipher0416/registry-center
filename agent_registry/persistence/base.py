@@ -58,5 +58,17 @@ class StorageBackend(ABC):
         pass
 
     @abstractmethod
+    def get_tags(self, name: str, organization: str) -> List[str]:
+        pass
+
+    @abstractmethod
+    def update_tags(self, name: str, organization: str, tags: List[str]) -> bool:
+        pass
+
+    @abstractmethod
+    def find_by_tag(self, tag: str) -> List[AgentCard]:
+        pass
+
+    @abstractmethod
     def close(self):
         pass

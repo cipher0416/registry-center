@@ -19,6 +19,7 @@ PERSISTENCE_CONF = get_persistence_conf()
 PERSISTENCE_MODE = PERSISTENCE_CONF.get("persistence.mode", "file")
 PERSISTENCE_FILE = "agentcard.json"
 PERSISTENCE_METADATA_FILE = "agentregistry.json"
+PERSISTENCE_TAGS_FILE = "agent_tags.json"
 USE_VECTORDB = str(get_conf().get("use_vectordb", False)).lower() == 'true'
 COLLECTION_NAME = "agent_card_collection"
 MAX_REGISTER_NUM = 40
@@ -32,24 +33,19 @@ CONN_TIMEOUT = "connection.timeout"
 CONN_MAX = "connection.max"
 FLOW_CTL_REGISTER = "flowcontrol.ratelimit.register"
 FLOW_CTL_PARALLEL_REGISTER = "flowcontrol.parallelism.register"
-
 FLOW_CTL_QUERY = "flowcontrol.ratelimit.query"
 FLOW_CTL_PARALLEL_QUERY = "flowcontrol.parallelism.query"
-
 FLOW_CTL_UPDATE = "flowcontrol.ratelimit.update"
 FLOW_CTL_PARALLEL_UPDATE = "flowcontrol.parallelism.update"
-
 FLOW_CTL_GET = "flowcontrol.ratelimit.get"
 FLOW_CTL_PARALLEL_GET = "flowcontrol.parallelism.get"
-
 FLOW_CTL_RETRIEVE = "flowcontrol.ratelimit.retrieve"
 FLOW_CTL_PARALLEL_RETRIEVE = "flowcontrol.parallelism.retrieve"
-
 FLOW_CTL_DEREGISTER = "flowcontrol.ratelimit.deregister"
 FLOW_CTL_PARALLEL_DEREGISTER = "flowcontrol.parallelism.deregister"
-
 FLOW_CTL_JWK = "flowcontrol.ratelimit.jwk"
 FLOW_CTL_PARALLEL_JWK = "flowcontrol.parallelism.jwk"
-
 AGENT_NUM_MAX = "agent.num.max"
 FORWARDED_ALLOW_IPS = "forwarded_allow_ips"
+TAG_MAX_COUNT = "tag.max.count"
+TAG_MAX_LENGTH = "tag.max.length"

@@ -23,26 +23,29 @@ from a2a.types import AgentCard
 from google.protobuf.json_format import MessageToDict
 from loguru import logger
 
-from agent_registry.config import PERSISTENCE_METADATA_FILE
+from agent_registry.config import PERSISTENCE_METADATA_FILE, PERSISTENCE_TAGS_FILE
 from .base import StorageBackend
 
 
 class FileStorage(StorageBackend):
-    def __init__(self, file_path: str, metadata_file: str = None, max_file_size: int = 100 * 1024 * 1024):
+    def __init__(self, file_path: str, metadata_file: str = None, tags_file: str = None, max_file_size: int = 100 * 1024 * 1024):
         self.file_path = file_path
         self.metadata_file = metadata_file or str(Path(file_path).parent / PERSISTENCE_METADATA_FILE)
+        self.tags_file = tags_file or str(Path(file_path).parent / PERSISTENCE_TAGS_FILE)
         self.max_file_size = max_file_size
         self._agents: Dict[tuple, AgentCard] = {}
         self._status_map: Dict[tuple, str] = {}
+        self._tags_map: Dict[tuple, List[str]] = {}
         self._load()
 
     @classmethod
     def init(cls, config: dict) -> 'FileStorage':
         file_path = config.get('file.path', 'data/agentcard.json')
         metadata_file = config.get('metadata.file', f'data/{PERSISTENCE_METADATA_FILE}')
+        tags_file = config.get('tags.file', f'data/{PERSISTENCE_TAGS_FILE}')
         max_file_size = config.get('max_file_size', 100 * 1024 * 1024)
         Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-        instance = cls(file_path, metadata_file, max_file_size)
+        instance = cls(file_path, metadata_file, tags_file, max_file_size)
         logger.info(f"FileStorage initialized with path: {file_path}")
         return instance
 
@@ -53,6 +56,7 @@ class FileStorage(StorageBackend):
             self._status_map[key] = agent.status
         else:
             self._status_map[key] = 'published'
+        self._tags_map[key] = []
         self._save()
         logger.info(f"Registered agent: {agent.name} (org={agent.provider.organization})")
         return True
@@ -140,6 +144,8 @@ class FileStorage(StorageBackend):
         del self._agents[key]
         if key in self._status_map:
             del self._status_map[key]
+        if key in self._tags_map:
+            del self._tags_map[key]
         self._save()
         logger.info(f"Deregistered agent: {name}({organization})")
         return True
@@ -154,6 +160,7 @@ class FileStorage(StorageBackend):
     def _save(self) -> None:
         self._save_agents()
         self._save_registry()
+        self._save_tags()
 
     def _save_agents(self) -> None:
         agent_cards = []
@@ -194,6 +201,7 @@ class FileStorage(StorageBackend):
     def _load(self) -> None:
         self._load_agents()
         self._load_registry()
+        self._load_tags()
 
     def _load_agents(self) -> None:
         if not os.path.exists(self.file_path):
@@ -248,3 +256,66 @@ class FileStorage(StorageBackend):
             logger.info(f"Loaded {len(self._status_map)} status mappings from {self.metadata_file}")
         except Exception as e:
             logger.error(f"Failed to load registry from {self.metadata_file}: {e}")
+
+    def _load_tags(self) -> None:
+        if not os.path.exists(self.tags_file):
+            for key in self._agents.keys():
+                self._tags_map[key] = []
+            logger.info("No tags file found, defaulting all agents to empty tags")
+            return
+
+        try:
+            with open(self.tags_file, 'r', encoding='utf-8') as f:
+                tags_data = json.load(f)
+            if not isinstance(tags_data, list):
+                logger.error(f"Invalid format in {self.tags_file}: expected a list")
+                return
+            for item in tags_data:
+                try:
+                    key = (item['agent_name'].strip(), item['organization'].strip())
+                    self._tags_map[key] = item.get('tags', [])
+                except Exception as e:
+                    logger.error(f"Failed to load tags from JSON: {e}, data: {item}")
+            logger.info(f"Loaded {len(self._tags_map)} tags mappings from {self.tags_file}")
+        except Exception as e:
+            logger.error(f"Failed to load tags from {self.tags_file}: {e}")
+
+    def _save_tags(self) -> None:
+        tags_data = []
+        for key, tags in self._tags_map.items():
+            tags_data.append({
+                "organization": key[1],
+                "agent_name": key[0],
+                "tags": tags
+            })
+
+        json_str = json.dumps(tags_data, ensure_ascii=False, indent=2)
+        Path(self.tags_file).parent.mkdir(parents=True, exist_ok=True)
+        with open(self.tags_file, 'w', encoding='utf-8') as f:
+            f.write(json_str)
+        os.chmod(self.tags_file, 0o600)
+        logger.info(f"Saved {len(self._tags_map)} tags mappings to {self.tags_file}")
+
+    def get_tags(self, name: str, organization: str) -> List[str]:
+        key = (name.strip(), organization.strip())
+        return self._tags_map.get(key, [])
+
+    def update_tags(self, name: str, organization: str, tags: List[str]) -> bool:
+        key = (name.strip(), organization.strip())
+        if key not in self._agents:
+            logger.warning(f"Agent not found: {name} ({organization})")
+            return False
+        
+        self._tags_map[key] = tags
+        self._save_tags()
+        logger.info(f"Agent tags updated: {name} -> {tags}")
+        return True
+
+    def find_by_tag(self, tag: str) -> List[AgentCard]:
+        result = []
+        for key, tags in self._tags_map.items():
+            if tag in tags:
+                agent = self._agents.get(key)
+                if agent:
+                    result.append(agent)
+        return result

@@ -97,3 +97,27 @@ class PostgreSQLQueries(str, Enum):
     COUNT = "SELECT COUNT(*) FROM agent_card"
 
     COUNT_BY_STATUS = "SELECT COUNT(*) FROM agent_card WHERE status = %s"
+
+    ADD_COLUMN_TAGS = """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                           WHERE table_name='agent_card' AND column_name='tags') THEN
+                ALTER TABLE agent_card ADD COLUMN tags JSONB DEFAULT '[]'::jsonb;
+            END IF;
+        END $$;
+    """
+
+    GET_TAGS = """
+        SELECT tags FROM agent_card WHERE name = %s AND organization = %s
+    """
+
+    UPDATE_TAGS = """
+        UPDATE agent_card SET tags = %s, updated_at = %s
+        WHERE name = %s AND organization = %s
+    """
+
+    FIND_BY_TAG = """
+        SELECT agent_card_json FROM agent_card 
+        WHERE tags @> %s::jsonb
+    """

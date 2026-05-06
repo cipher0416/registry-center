@@ -18,3 +18,8 @@ from enum import Enum
 
 class Action(str, Enum):
     APPROVAL = "approval"
+    TAG_ADD = "tag_add"
+    TAG_REMOVE = "tag_remove"
+    TAG_UPDATE = "tag_update"
+    TAG_GET = "tag_get"
+    TAG_LIST = "tag_list"

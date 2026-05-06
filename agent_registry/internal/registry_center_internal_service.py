@@ -24,6 +24,10 @@ from pydantic import ValidationError
 
 from agent_registry.internal.handlers import BaseUDSHandler
 from agent_registry.internal.handlers.approval_handler import ApprovalHandler
+from agent_registry.internal.handlers.tag_handler import (
+    TagAddHandler, TagRemoveHandler, TagUpdateHandler,
+    TagGetHandler, TagListHandler
+)
 from agent_registry.internal.protocols.actions import Action
 from agent_registry.internal.protocols.request import InternalRequest
 from agent_registry.registry_instance import get_registry
@@ -33,6 +37,11 @@ from common.util.config_util import get_conf
 class RequestDispatcher:
     _handlers: Dict[str, Type[BaseUDSHandler]] = {
         Action.APPROVAL: ApprovalHandler,
+        Action.TAG_ADD: TagAddHandler,
+        Action.TAG_REMOVE: TagRemoveHandler,
+        Action.TAG_UPDATE: TagUpdateHandler,
+        Action.TAG_GET: TagGetHandler,
+        Action.TAG_LIST: TagListHandler,
     }
 
     def get_handler(self, action: str) -> Optional[BaseUDSHandler]:
