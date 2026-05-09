@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-
 class ValidationResult:
     def __init__(self, is_valid: bool, message: str):
         self.is_valid = is_valid

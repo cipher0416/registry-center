@@ -13,8 +13,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-
 DEFAULT_ENCODING = 'utf-8'
+
+
+def encrypt(plaintext: str) -> str:
+    # need to impl by user
+    return plaintext
 
 
 def decrypt(ciphertext: str) -> bytes:

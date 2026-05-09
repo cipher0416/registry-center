@@ -67,4 +67,3 @@ def load_configs(conf_path, config):
                 value = value.strip()
 
                 config[key.lower()] = value
-

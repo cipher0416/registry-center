@@ -17,9 +17,13 @@ from enum import Enum
 
 
 class InterfaceType(Enum):
-    """认证失败原因枚举"""
+    """Interface type enumeration"""
     DECRYPT = "decrypt"
     AUDIT = "audit"
     AUTHENTICATE = "authenticate"
     INSERT = "insert"
     QUERY = "query"
+    UPDATE = "update"
+    GET = "get"
+    RETRIEVE = "retrieve"
+    DEREGISTER = "deregister"
