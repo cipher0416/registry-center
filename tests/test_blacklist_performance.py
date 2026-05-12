@@ -18,7 +18,8 @@ import statistics
 
 from agent_registry.model.blacklist_config import (
     PROMPT_INJECTION_BLACKLIST_ALL,
-    DANGEROUS_SKILL_BLACKLIST_ALL
+    DANGEROUS_SKILL_BLACKLIST_ALL,
+    MASTER_BLACKLIST_ALL
 )
 
 
@@ -132,13 +133,10 @@ def test_real_world_scenario():
         check_blacklist_new(description, PROMPT_INJECTION_BLACKLIST_ALL, "description")
         check_blacklist_new(description, DANGEROUS_SKILL_BLACKLIST_ALL, "description")
         for name, desc, tags in skills_data:
-            check_blacklist_new(name, PROMPT_INJECTION_BLACKLIST_ALL, "skill name")
-            check_blacklist_new(name, DANGEROUS_SKILL_BLACKLIST_ALL, "skill name")
-            check_blacklist_new(desc, PROMPT_INJECTION_BLACKLIST_ALL, "skill description")
-            check_blacklist_new(desc, DANGEROUS_SKILL_BLACKLIST_ALL, "skill description")
+            check_blacklist_new(name, MASTER_BLACKLIST_ALL, "skill name")
+            check_blacklist_new(desc, MASTER_BLACKLIST_ALL, "skill description")
             for tag in tags:
-                check_blacklist_new(tag, PROMPT_INJECTION_BLACKLIST_ALL, "skill tag")
-                check_blacklist_new(tag, DANGEROUS_SKILL_BLACKLIST_ALL, "skill tag")
+                check_blacklist_new(tag, MASTER_BLACKLIST_ALL, "skill tag")
     
     avg, std = measure_time(simulate_full_validation, iterations=1000)
     

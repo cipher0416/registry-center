@@ -21,7 +21,11 @@ from google.protobuf.internal.containers import RepeatedScalarFieldContainer, Re
 from google.protobuf.json_format import MessageToJson
 from pydantic import HttpUrl
 
-from .blacklist_config import PROMPT_INJECTION_BLACKLIST_ALL, DANGEROUS_SKILL_BLACKLIST_ALL
+from .blacklist_config import (
+    PROMPT_INJECTION_BLACKLIST_ALL,
+    DANGEROUS_SKILL_BLACKLIST_ALL,
+    MASTER_BLACKLIST_ALL
+)
 
 _NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*$')
 
@@ -109,13 +113,11 @@ def validate_skills(skills: RepeatedCompositeFieldContainer[AgentSkill]):
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f'The agent can contain a maximum of {MAX_NUMBER_OF_SKILLS} skills')
     
-    all_blacklist = PROMPT_INJECTION_BLACKLIST_ALL + DANGEROUS_SKILL_BLACKLIST_ALL
-    
     for skill in skills:
-        check_blacklist(skill.name, all_blacklist, "skill name")
-        check_blacklist(skill.description, all_blacklist, "skill description")
+        check_blacklist(skill.name, MASTER_BLACKLIST_ALL, "skill name")
+        check_blacklist(skill.description, MASTER_BLACKLIST_ALL, "skill description")
         for tag in skill.tags:
-            check_blacklist(tag, all_blacklist, "skill tag")
+            check_blacklist(tag, MASTER_BLACKLIST_ALL, "skill tag")
         skill_json = MessageToJson(skill)
         if len(skill_json) > SKILL_MAX_LENGTH:
             raise HTTPException(
