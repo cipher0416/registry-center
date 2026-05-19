@@ -1,5 +1,22 @@
 ﻿# 注册中心API参考
 
+## 简介
+
+### 特性介绍
+
+注册中心是一个专注于Agent统一管理的服务，支持用户将来自不同厂商的Agent进行集中注册与管理，实现多源Agent的可控接入与维护。应用于A2A-T领域多厂商多智能体交互场景下的AgentCard统一注册和管理。
+
+### 主要功能
+
+- **注册AgentCard**：支持将不同厂商的Agent注册到中心，统一纳管。
+- **查询AgentCard列表**：根据指定条件查询符合条件的AgentCard列表。
+- **查询指定AgentCard**：按AgentCard名称和组织精确查找唯一的AgentCard实例。
+- **更新指定AgentCard**：更新指定AgentCard的信息。
+- **删除指定AgentCard**：删除不再使用的AgentCard。
+- **按语义检索AgentCard**：根据自然语言语义检索相匹配的AgentCard。
+- **签名验证**：验证AgentCard签名，确保来源可信。
+- **公钥管理**：提供注册中心签名公钥的获取接口。
+
 ## 注册AgentCard
 
 - 典型场景
@@ -278,9 +295,9 @@
 
 - 响应参数
 
-| 参数名称 | 类型     | 值域 | 默认值 | 描述         |
-|------|--------|------|-----|--------------|
-| -    | object | {}   | -   | 符合要求的Agent列表 |
+  | 参数名称 | 类型     | 值域 | 默认值 | 描述         |
+  |------|--------|------|-----|--------------|
+  | -    | object | {}   | -   | 符合要求的Agent列表 |
 
 - 响应样例
 
@@ -359,9 +376,9 @@
 
 - 状态码
 
-    | 状态码 | 说明 |
-    |--------|------|
-    | 200 | 查询成功 |
+  | 状态码 | 说明 |
+  |--------|------|
+  | 200 | 查询成功 |
 
 ## 查询指定AgentCard
 
@@ -396,17 +413,17 @@
 
 - 请求示例
 
-```json
-GET /rest/v1/registry-center/agent-cards/Huawei/RAN%20Energy%20Saving%20Agent HTTP/1.1
-Host: your-domain.com
-Content-Type: application/json
-```
+  ```json
+  GET /rest/v1/registry-center/agent-cards/Huawei/RAN%20Energy%20Saving%20Agent HTTP/1.1
+  Host: your-domain.com
+  Content-Type: application/json
+  ```
 
 - 响应参数
 
-| 参数名称 | 类型     | 值域   | 默认值 | 描述       |
-|------|--------|--------|-----|------------|
-| -    | object | object | -   | 符合要求的Agent |
+  | 参数名称 | 类型     | 值域   | 默认值 | 描述       |
+  |------|--------|--------|-----|------------|
+  | -    | object | object | -   | 符合要求的Agent |
 
 - 响应样例
 
@@ -670,11 +687,11 @@ Content-Type: application/json
 
 - 请求示例
 
-```json
-DELETE /rest/v1/registry-center/agent-cards/Huawei/RAN%20Energy%20Saving%20Agent HTTP/1.1
-Host: your-domain.com
-Content-Type: application/json
-```
+  ```json
+  DELETE /rest/v1/registry-center/agent-cards/Huawei/RAN%20Energy%20Saving%20Agent HTTP/1.1
+  Host: your-domain.com
+  Content-Type: application/json
+  ```
 
 - 响应参数
     无。
@@ -747,9 +764,9 @@ Content-Type: application/json
 
 - 响应参数
 
-| 参数名称 | 类型     | 值域 | 默认值 | 描述         |
-|------|--------|------|-----|--------------|
-| -    | object | {}   | -   | 符合要求的Agent列表 |
+  | 参数名称 | 类型     | 值域 | 默认值 | 描述         |
+  |------|--------|------|-----|--------------|
+  | -    | object | {}   | -   | 符合要求的Agent列表 |
 
 - 响应样例
 
@@ -862,11 +879,11 @@ Content-Type: application/json
 
 - 请求示例
 
-```json
-GET /rest/v1/registry-center/keys HTTP/1.1
-Host: your-domain.com
-Content-Type： application/json
-```
+  ```json
+  GET /rest/v1/registry-center/keys HTTP/1.1
+  Host: your-domain.com
+  Content-Type： application/json
+  ```
 
 - 响应参数
 
