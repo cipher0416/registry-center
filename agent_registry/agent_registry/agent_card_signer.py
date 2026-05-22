@@ -85,13 +85,27 @@ class AgentCardSigner:
                 if isinstance(value, dict):
                     canonical[key] = self._canonicalize_agent_card(value)
                 elif isinstance(value, list):
-                    canonical[key] = sorted(value)
+                    canonical[key] = self._canonicalize_list(value)
                 else:
                     canonical[key] = value
             return canonical
         except Exception as e:
             logger.error(f"Failed to canonicalize agent card: {e}")
             raise
+
+    def _canonicalize_list(self, lst: list) -> list:
+        result = []
+        for item in lst:
+            if isinstance(item, dict):
+                result.append(self._canonicalize_agent_card(item))
+            elif isinstance(item, list):
+                result.append(self._canonicalize_list(item))
+            else:
+                result.append(item)
+        try:
+            return sorted(result)
+        except TypeError:
+            return result
 
     def _create_jwk_header(self, kid: str) -> Dict[str, str]:
         try:
