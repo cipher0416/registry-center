@@ -6,24 +6,30 @@ from cryptography.hazmat.backends import default_backend
 from cryptography import x509
 import json
 
+from a2a.types import AgentCardSignature
+from google.protobuf.json_format import MessageToDict
+
 
 class AgentCardSigner:
 
     def __init__(
         self,
-        private_key_path: str,
+        private_key_path: str = "",
+        cert_path: str = "",
         password_path: Optional[str] = None,
-        jku_url: Optional[str] = None,
+        jku_url: str = "",
         algorithm: str = "RS256",
         sign_enabled: bool = True
     ):
         self.private_key_path = private_key_path
+        self.cert_path = cert_path
         self.password_path = password_path
         self.jku_url = jku_url
         self.algorithm = algorithm
         self.sign_enabled = sign_enabled
         self._private_key = None
         self._password = None
+        self._kid = None
         self._algorithm_map = {
             "RS256": hashes.SHA256(),
             "RS384": hashes.SHA384(),
@@ -32,6 +38,7 @@ class AgentCardSigner:
 
         if self.sign_enabled:
             self._load_credentials()
+            self._load_cert()
 
     def is_enabled(self) -> bool:
         return self.sign_enabled
@@ -44,7 +51,7 @@ class AgentCardSigner:
             password = None
             if self.password_path:
                 with open(self.password_path, 'r') as f:
-                    password = f.read().strip()
+                    password = f.read().strip().encode('utf-8')
 
             self._private_key = serialization.load_pem_private_key(
                 private_key_data,
@@ -57,6 +64,19 @@ class AgentCardSigner:
             logger.error(f"Failed to load private key: {e}")
             raise
 
+    def _load_cert(self):
+        try:
+            with open(self.cert_path, 'rb') as f:
+                cert_data = f.read()
+
+            cert = x509.load_pem_x509_certificate(cert_data, default_backend())
+            self._kid = format(cert.serial_number, 'x')
+
+            logger.info(f"Certificate loaded successfully, kid={self._kid}")
+        except Exception as e:
+            logger.error(f"Failed to load certificate: {e}")
+            raise
+
     def _canonicalize_agent_card(self, agent_card: Dict[str, Any]) -> Dict[str, Any]:
         try:
             canonical = {}
@@ -65,13 +85,27 @@ class AgentCardSigner:
                 if isinstance(value, dict):
                     canonical[key] = self._canonicalize_agent_card(value)
                 elif isinstance(value, list):
-                    canonical[key] = sorted(value)
+                    canonical[key] = self._canonicalize_list(value)
                 else:
                     canonical[key] = value
             return canonical
         except Exception as e:
             logger.error(f"Failed to canonicalize agent card: {e}")
             raise
+
+    def _canonicalize_list(self, lst: list) -> list:
+        result = []
+        for item in lst:
+            if isinstance(item, dict):
+                result.append(self._canonicalize_agent_card(item))
+            elif isinstance(item, list):
+                result.append(self._canonicalize_list(item))
+            else:
+                result.append(item)
+        try:
+            return sorted(result)
+        except TypeError:
+            return result
 
     def _create_jwk_header(self, kid: str) -> Dict[str, str]:
         try:
@@ -113,40 +147,54 @@ class AgentCardSigner:
             raise
 
     def sign_agent_card(self, agent_card: Any) -> Any:
+        logger.info(f"[DEBUG] sign_agent_card called, sign_enabled={self.sign_enabled}")
         if not self.sign_enabled:
             logger.debug("Signing is disabled, returning original agent card")
             return agent_card
 
         try:
-            agent_card_dict = agent_card.model_dump() if hasattr(agent_card, 'model_dump') else agent_card
+            logger.info(f"[DEBUG] sign_agent_card: kid={self._kid}")
+            agent_card_dict = MessageToDict(agent_card, preserving_proto_field_name=True)
 
             canonical_card = self._canonicalize_agent_card(agent_card_dict)
             canonical_json = json.dumps(canonical_card, separators=(',', ':'), sort_keys=True)
 
             signature = self._create_signature(canonical_json)
 
-            kid = self.jku_url.split('/')[-1] if self.jku_url else "default_kid"
-            jwk_header = self._create_jwk_header(kid)
+            kid = self._kid
+            protected_header = self._create_protected_header(kid)
 
-            signatures = getattr(agent_card, 'signatures', [])
-            if not isinstance(signatures, list):
-                signatures = []
+            protected_b64 = self._base64url_encode(json.dumps(protected_header, separators=(',', ':')).encode('utf-8'))
 
-            new_signature = {
-                "protected": jwk_header,
-                "signature": signature
-            }
+            new_sig = AgentCardSignature()
+            new_sig.protected = protected_b64
+            new_sig.signature = signature
 
-            signatures.append(new_signature)
+            logger.info(f"[DEBUG] new_sig.protected: {new_sig.protected}")
+            logger.info(f"[DEBUG] new_sig.signature length: {len(new_sig.signature)}")
 
-            if hasattr(agent_card, 'model_copy'):
-                signed_card = agent_card.model_copy()
-                signed_card.signatures = signatures
-                return signed_card
-            else:
-                agent_card_dict['signatures'] = signatures
-                return agent_card_dict
+            agent_card.signatures.append(new_sig)
+
+            logger.info(f"[DEBUG] agent_card.signatures after append: {len(agent_card.signatures)}")
+            logger.info(f"Agent card signed successfully, kid={kid}")
+            return agent_card
 
         except Exception as e:
             logger.warning(f"Failed to sign agent card: {e}. Returning original agent card.")
             return agent_card
+
+    def _create_protected_header(self, kid: str) -> Dict[str, Any]:
+        """Create protected header for JWS signature"""
+        public_key = self._private_key.public_key()
+        numbers = public_key.public_numbers()
+
+        return {
+            "alg": self.algorithm,
+            "typ": "JOSE",
+            "kid": kid,
+            "jku": self.jku_url,
+            "kty": "RSA",
+            "use": "sig",
+            "n": self._base64url_encode(numbers.n.to_bytes((numbers.n.bit_length() + 7) // 8, 'big')),
+            "e": self._base64url_encode(numbers.e.to_bytes((numbers.e.bit_length() + 7) // 8, 'big'))
+        }

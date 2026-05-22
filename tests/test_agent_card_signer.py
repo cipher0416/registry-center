@@ -4,11 +4,12 @@ from agent_registry.agent_registry.agent_card_signer import AgentCardSigner
 
 
 def test_is_enabled_true():
-    with patch('agent_registry.agent_registry.agent_card_signer.AgentCardSigner._load_credentials'):
+    with patch('agent_registry.agent_registry.agent_card_signer.AgentCardSigner._load_credentials'), \
+         patch('agent_registry.agent_registry.agent_card_signer.AgentCardSigner._load_cert'):
         signer = AgentCardSigner(
             private_key_path="dummy_key.pem",
+            cert_path="dummy_cert.pem",
             password_path=None,
-            jku_url="http://example.com/jwks.json",
             algorithm="RS256",
             sign_enabled=True
         )
@@ -25,6 +26,7 @@ def test_is_enabled_true():
         mock_private_key.sign.return_value = mock_signature
         
         signer._private_key = mock_private_key
+        signer._kid = "test_kid"
         
         mock_agent_card = MagicMock()
         mock_agent_card.model_dump.return_value = {
@@ -48,8 +50,8 @@ def test_is_enabled_true():
 def test_is_enabled_false():
     signer = AgentCardSigner(
         private_key_path="dummy_key.pem",
+        cert_path="dummy_cert.pem",
         password_path=None,
-        jku_url=None,
         algorithm="RS256",
         sign_enabled=False
     )
@@ -68,21 +70,23 @@ def test_is_enabled_false():
 
 
 def test_is_enabled_method():
-    signer_enabled = AgentCardSigner(
-        private_key_path="dummy_key.pem",
-        password_path=None,
-        jku_url=None,
-        algorithm="RS256",
-        sign_enabled=True
-    )
-    
-    signer_disabled = AgentCardSigner(
-        private_key_path="dummy_key.pem",
-        password_path=None,
-        jku_url=None,
-        algorithm="RS256",
-        sign_enabled=False
-    )
-    
-    assert signer_enabled.is_enabled() is True
-    assert signer_disabled.is_enabled() is False
+    with patch('agent_registry.agent_registry.agent_card_signer.AgentCardSigner._load_credentials'), \
+         patch('agent_registry.agent_registry.agent_card_signer.AgentCardSigner._load_cert'):
+        signer_enabled = AgentCardSigner(
+            private_key_path="dummy_key.pem",
+            cert_path="dummy_cert.pem",
+            password_path=None,
+            algorithm="RS256",
+            sign_enabled=True
+        )
+        
+        signer_disabled = AgentCardSigner(
+            private_key_path="dummy_key.pem",
+            cert_path="dummy_cert.pem",
+            password_path=None,
+            algorithm="RS256",
+            sign_enabled=False
+        )
+        
+        assert signer_enabled.is_enabled() is True
+        assert signer_disabled.is_enabled() is False

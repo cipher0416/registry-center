@@ -38,6 +38,7 @@ from limits import strategies, storage, parse_many
 from starlette.responses import Response
 
 from agent_registry.agent_registry.jwk_provider import JWKProvider, CertLoadError
+from agent_registry.agent_registry.agent_card_signer import AgentCardSigner
 from agent_registry.config import (
     MAX_REQUEST_BODY_SIZE,
     MAX_URL_LENGTH, CONN_TIMEOUT, CONN_MAX, FLOW_CTL_PARALLEL_REGISTER, FLOW_CTL_PARALLEL_QUERY, FLOW_CTL_REGISTER,
@@ -68,6 +69,7 @@ limiter = strategies.MovingWindowRateLimiter(sync_storage)
 audit_handle = HandlerRegistry.get_handler(InterfaceType.AUDIT)
 
 _signature_validator: Optional[AgentCardSignatureValidator] = None
+_registry_signer: Optional[AgentCardSigner] = None
 
 
 def get_signature_validator() -> AgentCardSignatureValidator:
@@ -78,6 +80,52 @@ def get_signature_validator() -> AgentCardSignatureValidator:
         jwk_fetcher = JWKFetcher(public_key_manager)
         _signature_validator = AgentCardSignatureValidator(jwk_fetcher)
     return _signature_validator
+
+
+def get_registry_signer() -> Optional[AgentCardSigner]:
+    """Get or create registry signer instance based on config"""
+    global _registry_signer
+    if _registry_signer is None:
+        sign_enabled_raw = config.get('registry.sign.enabled', 'false')
+        sign_enabled = sign_enabled_raw.lower() == 'true'
+        logger.info(f"[DEBUG] registry.sign.enabled raw value: '{sign_enabled_raw}', parsed: {sign_enabled}")
+        
+        if sign_enabled:
+            private_key_path = config.get('jwk_private_key_path', '')
+            cert_path = config.get('jwk_cert_path', '')
+            password_path = config.get('jwk_private_key_password', '')
+            
+            ip = config.get('ip', '127.0.0.1')
+            port = config.get('port', '5000')
+            jku_url = f"https://{ip}:{port}/rest/v1/registry-center/keys"
+            
+            logger.info(f"[DEBUG] private_key_path: '{private_key_path}', cert_path: '{cert_path}', password_path: '{password_path}'")
+            logger.info(f"[DEBUG] jku_url: '{jku_url}' (ip='{ip}', port='{port}')")
+            
+            if private_key_path and cert_path:
+                try:
+                    _registry_signer = AgentCardSigner(
+                        private_key_path=private_key_path,
+                        cert_path=cert_path,
+                        password_path=password_path if password_path else None,
+                        jku_url=jku_url,
+                        sign_enabled=True
+                    )
+                    logger.info("Registry signer initialized successfully")
+                except Exception as e:
+                    logger.error(f"Failed to initialize registry signer: {e}")
+                    _registry_signer = AgentCardSigner(sign_enabled=False)
+            else:
+                logger.warning("Registry signer disabled: missing private_key_path or cert_path")
+                _registry_signer = AgentCardSigner(sign_enabled=False)
+        else:
+            logger.info("[DEBUG] registry.sign.enabled is false, creating disabled signer")
+            _registry_signer = AgentCardSigner(sign_enabled=False)
+            logger.info("[DEBUG] disabled signer created successfully")
+    
+    if _registry_signer:
+        logger.info(f"[DEBUG] registry_signer.is_enabled(): {_registry_signer.is_enabled()}")
+    return _registry_signer
 
 
 def parse_rate_limit(interface_name: str):
@@ -452,6 +500,7 @@ async def register_agent(
         _: Any = Depends(RateLimiter('register')),
         registry: RegistryCore = Depends(get_registry),
         signature_validator: AgentCardSignatureValidator = Depends(get_signature_validator),
+        registry_signer: Optional[AgentCardSigner] = Depends(get_registry_signer),
 ):
     """
     Register a new agent.
@@ -506,6 +555,14 @@ async def register_agent(
                 )
 
             logger.info(f"Register agent success: name={agent.name}, org={agent.provider.organization}")
+
+            logger.info(f"[DEBUG] registry_signer exists: {registry_signer is not None}, is_enabled: {registry_signer.is_enabled() if registry_signer else False}")
+            logger.info(f"[DEBUG] agent signatures before sign: {len(agent.signatures)} items")
+
+            if registry_signer and registry_signer.is_enabled():
+                agent = registry_signer.sign_agent_card(agent)
+                logger.info(f"[DEBUG] agent signatures after sign: {len(agent.signatures)} items")
+                logger.info(f"Registry signature added for agent: {agent.name}")
 
             approval_enabled = config.get('agent_approval_enabled', 'false')
             if approval_enabled == 'true':
@@ -592,6 +649,7 @@ async def update_agent(
         registry: RegistryCore = Depends(get_registry),
         _: Any = Depends(RateLimiter('update')),
         signature_validator: AgentCardSignatureValidator = Depends(get_signature_validator),
+        registry_signer: Optional[AgentCardSigner] = Depends(get_registry_signer),
 ):
     """
     Fully replace an existing agent. The name and organization in the body must match the path/query.
@@ -641,6 +699,10 @@ async def update_agent(
                     status.HTTP_401_UNAUTHORIZED,
                     signature_result.error_message or "Signature verification failed"
                 )
+
+            if registry_signer and registry_signer.is_enabled():
+                agent_data = registry_signer.sign_agent_card(agent_data)
+                logger.info(f"Registry signature added for agent: {agent_data.name}")
 
             await _check_agent_limit(registry, client_ip, details)
 
@@ -819,7 +881,7 @@ def _make_agent_key(name: str, organization: str) -> Tuple[str, str]:
 
 
 # ---------- JWK Endpoint ----------
-jwk_provider = JWKProvider(cert_path=config.get("JWK_CERT_PATH", "cert.pem"))
+jwk_provider = JWKProvider(cert_path=config.get("jwk_cert_path", "cert.pem"))
 
 jwk_rate_item = parse_rate_limit('jwk')
 
