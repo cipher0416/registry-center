@@ -12,93 +12,388 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+
+"""Tests for RegistryCore registration, update, delete, and query operations."""
+
 import json
-
+import os
+import tempfile
 import pytest
-from fastapi.testclient import TestClient
+from unittest.mock import patch, MagicMock
+
 from a2a.types import AgentCard
-from google.protobuf.json_format import Parse, MessageToJson
-
-from agent_registry.server import app
+from agent_registry.core import RegistryCore, make_agent_key
 
 
-@pytest.fixture
-def client():
-    return TestClient(app)
+class TestRegistryCoreFileMode:
+    """Unit tests for RegistryCore in file persistence mode."""
+
+    @pytest.fixture
+    def temp_dir(self):
+        d = tempfile.mkdtemp()
+        yield d
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+
+    @pytest.fixture
+    def registry(self, temp_dir):
+        with patch('agent_registry.core.get_llm_instance', return_value=MagicMock()), \
+             patch('agent_registry.core.get_embed_instance', return_value=MagicMock()), \
+             patch('agent_registry.core.get_root_path', return_value=temp_dir), \
+             patch('agent_registry.config.get_conf', return_value={}), \
+             patch('agent_registry.config.get_persistence_conf', return_value={'persistence.mode': 'file'}):
+            reg = RegistryCore(
+                persistence_file='agentcard.json',
+                persistence_metadata_file='agentregistry.json',
+                use_vectordb=False,
+                persistence_mode='file',
+                persistence_conf={}
+            )
+            yield reg
+
+    def _make_agent(self, name="TestAgent", org="TestOrg", desc="Test agent"):
+        data = {
+            "name": name,
+            "provider": {"organization": org, "url": "https://test.org"},
+            "description": desc,
+            "version": "1.0.0",
+            "skills": [],
+            "capabilities": {"streaming": False},
+            "default_input_modes": [],
+            "default_output_modes": [],
+        }
+        return AgentCard(**data)
+
+    # ---- registration ----
+
+    def test_register_success(self, registry):
+        agent = self._make_agent()
+        result = registry.register(agent)
+        assert result is True
+        key = make_agent_key("TestAgent", "TestOrg")
+        assert key in registry._agents
+
+    def test_register_with_status(self, registry):
+        agent = self._make_agent()
+        result = registry.register_with_status(agent, initial_status='registered')
+        assert result is True
+        key = make_agent_key("TestAgent", "TestOrg")
+        assert registry._status_map[key] == 'registered'
+
+    def test_register_sets_timestamps(self, registry):
+        agent = self._make_agent()
+        registry.register(agent)
+        key = make_agent_key("TestAgent", "TestOrg")
+        assert registry._created_at_map.get(key)
+        assert registry._updated_at_map.get(key)
+
+    def test_register_default_published(self, registry):
+        agent = self._make_agent()
+        registry.register(agent)
+        assert registry.get_status("TestAgent", "TestOrg") == 'published'
+
+    # ---- count and limits ----
+
+    def test_count_zero_initially(self, registry):
+        assert registry.count() == 0
+
+    def test_count_increases_after_register(self, registry):
+        registry.register(self._make_agent())
+        assert registry.count() == 1
+
+    # ---- find / get ----
+
+    def test_get_by_key_found(self, registry):
+        agent = self._make_agent()
+        registry.register(agent)
+        result = registry.get_by_key("TestAgent", "TestOrg")
+        assert result is not None
+        assert result.name == "TestAgent"
+
+    def test_get_by_key_not_found(self, registry):
+        result = registry.get_by_key("Nonexistent", "NoOrg")
+        assert result is None
+
+    def test_get_agents_dict_structure(self, registry):
+        agent = self._make_agent()
+        registry.register(agent)
+        agents = registry.get_agents()
+        key = make_agent_key("TestAgent", "TestOrg")
+        assert key in agents
+
+    def test_find_exact_by_name_and_org(self, registry):
+        registry.register(self._make_agent("A1", "O1"))
+        registry.register(self._make_agent("A2", "O2"))
+        results = registry.find_exact(name="A1", organization="O1")
+        assert len(results) == 1
+        assert results[0].name == "A1"
+
+    def test_find_exact_by_name_only(self, registry):
+        registry.register(self._make_agent("UniqueName", "OrgX"))
+        registry.register(self._make_agent("Other", "OrgY"))
+        results = registry.find_exact(name="UniqueName")
+        assert len(results) == 1
+
+    def test_find_exact_by_org_only(self, registry):
+        registry.register(self._make_agent("X", "SpecialOrg"))
+        registry.register(self._make_agent("Y", "SpecialOrg"))
+        results = registry.find_exact(organization="SpecialOrg")
+        assert len(results) == 2
+
+    # ---- update ----
+
+    def test_update_success(self, registry):
+        registry.register(self._make_agent("Upd", "Org"))
+        updated_data = {
+            "name": "Upd", "provider": {"organization": "Org", "url": "https://new.org"},
+            "description": "Updated desc", "version": "2.0.0",
+            "skills": [], "capabilities": {"streaming": True},
+            "default_input_modes": [], "default_output_modes": [],
+        }
+        result = registry.update("Upd", "Org", updated_data)
+        assert result is True
+        agent = registry.get_by_key("Upd", "Org")
+        assert agent.description == "Updated desc"
+
+    def test_update_not_found(self, registry):
+        result = registry.update("Ghost", "Org", {"name": "Ghost"})
+        assert result is False
+
+    def test_update_changes_name_raises(self, registry):
+        registry.register(self._make_agent("Orig", "Org"))
+        data = {"name": "Changed", "provider": {"organization": "Org", "url": "https://x.com"},
+                "description": "d", "version": "1", "skills": [], "capabilities": {},
+                "default_input_modes": [], "default_output_modes": []}
+        with pytest.raises(ValueError, match="Cannot change primary key"):
+            registry.update("Orig", "Org", data)
+
+    # ---- deregister ----
+
+    def test_deregister_success(self, registry):
+        agent = self._make_agent("Del", "Org")
+        registry.register(agent)
+        result = registry.deregister("Del", "Org")
+        assert result is True
+        key = make_agent_key("Del", "Org")
+        assert key not in registry._agents
+
+    def test_deregister_not_found(self, registry):
+        result = registry.deregister("Ghost", "Org")
+        assert result is False
+
+    def test_deregister_cleans_metadata(self, registry):
+        agent = self._make_agent("Clean", "Org")
+        registry.register(agent)
+        key = make_agent_key("Clean", "Org")
+        registry.deregister("Clean", "Org")
+        assert key not in registry._status_map
+
+    # ---- status ----
+
+    def test_get_status_after_register(self, registry):
+        registry.register_with_status(self._make_agent("S", "O"), initial_status='registered')
+        assert registry.get_status("S", "O") == 'registered'
+
+    def test_get_status_not_found(self, registry):
+        assert registry.get_status("X", "Y") is None
+
+    def test_update_status(self, registry):
+        registry.register_with_status(self._make_agent("S2", "O"), initial_status='registered')
+        result = registry.update_status("S2", "O", "published")
+        assert result is True
+        assert registry.get_status("S2", "O") == "published"
+
+    def test_update_status_not_found(self, registry):
+        assert registry.update_status("Ghost", "Org", "published") is False
+
+    def test_get_agents_by_status(self, registry):
+        registry.register_with_status(self._make_agent("Pub", "O"), initial_status='published')
+        registry.register_with_status(self._make_agent("Reg", "O"), initial_status='registered')
+        published = registry.get_agents_by_status('published')
+        registered = registry.get_agents_by_status('registered')
+        assert len(published) == 1
+        assert published[0].name == "Pub"
+        assert len(registered) == 1
+        assert registered[0].name == "Reg"
+
+    # ---- persistence round-trip ----
+
+    def test_persistence_round_trip(self, temp_dir):
+        with patch('agent_registry.core.get_llm_instance', return_value=MagicMock()), \
+             patch('agent_registry.core.get_embed_instance', return_value=MagicMock()), \
+             patch('agent_registry.core.get_root_path', return_value=temp_dir), \
+             patch('agent_registry.config.get_conf', return_value={}), \
+             patch('agent_registry.config.get_persistence_conf', return_value={'persistence.mode': 'file'}):
+            reg1 = RegistryCore(persistence_file='agentcard.json', persistence_metadata_file='agentregistry.json',
+                                use_vectordb=False, persistence_mode='file', persistence_conf={})
+            reg1.register(self._make_agent("Persist", "Org"))
+            reg1.update_status("Persist", "Org", "registered")
+
+            reg2 = RegistryCore(persistence_file='agentcard.json', persistence_metadata_file='agentregistry.json',
+                                use_vectordb=False, persistence_mode='file', persistence_conf={})
+            assert reg2.count() == 1
+            assert reg2.get_status("Persist", "Org") == "registered"
+            assert reg2.get_by_key("Persist", "Org") is not None
+
+    # ---- _make_id ----
+
+    def test_make_id_with_separator_no_collision(self, registry):
+        id1 = registry._make_id("ab", "c")
+        id2 = registry._make_id("a", "bc")
+        assert id1 != id2
 
 
-@pytest.fixture
-def mock_registry(mocker):
-    return mocker.patch('agent_registry.core.RegistryCore')
+class TestFileStorageCRUD:
+    """Unit tests for FileStorage create/update/delete/query operations."""
 
+    @pytest.fixture
+    def temp_dir(self):
+        d = tempfile.mkdtemp()
+        yield d
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
 
-@pytest.fixture
-def valid_agent_data():
-    return {
-        "name": "TestAgent",
-        "provider": {
-            "organization": "TestOrg",
-            "url": "https://test.org"
-        },
-        "description": "Test Description",
-        "capabilities": {
-            "streaming": False,
-            "push_notifications": False
-        },
-        "default_input_modes": ["text/plain"],
-        "default_output_modes": ["text/plain"],
-        "version": "1.0.0",
-        "skills": [
-            {
-                "id": "skill-1",
-                "name": "TestSkill",
-                "description": "Test Skill Description",
-                "tags": ["test", "skill"],
-                "input_modes": ["text/plain"],
-                "output_modes": ["text/plain"]
-            }
-        ]
-    }
+    @pytest.fixture
+    def fs(self, temp_dir):
+        from agent_registry.persistence.file_storage import FileStorage
+        fp = os.path.join(temp_dir, "agents.json")
+        mf = os.path.join(temp_dir, "registry.json")
+        tf = os.path.join(temp_dir, "tags.json")
+        return FileStorage(fp, mf, tf)
 
+    def _make_agent(self, name="A", org="O", desc="d"):
+        return AgentCard(
+            name=name, provider={"organization": org, "url": "https://x.com"},
+            description=desc, version="1", skills=[], capabilities={},
+            default_input_modes=[], default_output_modes=[]
+        )
 
-def test_register_agent_success(client, mock_registry, valid_agent_data):
-    mock_registry.return_value.register.return_value = True
-    response = client.post("/rest/a2a-t/v1/agents/register", json=valid_agent_data)
-    assert response.status_code == 201
-    assert response.json() is True
+    def test_create_uses_status_param(self, fs):
+        agent = self._make_agent()
+        fs.create(agent, status='registered')
+        key = ("A", "O")
+        assert fs._status_map[key] == 'registered'
 
+    def test_create_uses_owner_param(self, fs):
+        agent = self._make_agent()
+        fs.create(agent, owner="owner1")
+        key = ("A", "O")
+        assert fs._owner_map[key] == "owner1"
 
-def test_register_agent_duplicate(client, mock_registry, valid_agent_data):
-    mock_registry.return_value.register.return_value = False
-    response = client.post("/rest/a2a-t/v1/agents/register", json=valid_agent_data)
-    assert response.status_code == 201
-    assert response.json() is False
+    def test_create_duplicate_returns_false(self, fs):
+        fs.create(self._make_agent())
+        assert fs.create(self._make_agent()) is False
 
+    def test_find_by_key_with_status_and_tags(self, fs):
+        fs.create(self._make_agent("N", "O"), owner="o1")
+        fs.update_agent_tags("N", "O", ["tag1"])
+        record = fs.find_by_key("N", "O")
+        assert record is not None
+        assert record.status == "published"
+        assert record.tags == ["tag1"]
+        assert record.owner == "o1"
+        assert record.created_at
 
-@pytest.mark.parametrize("field_to_remove", [
-    "name",
-    "provider",
-    "description",
-    "capabilities",
-    "default_input_modes",
-    "default_output_modes",
-    "url",
-    "version",
-    "skills"
-])
-def test_register_agent_missing_required_field(client, mock_registry, valid_agent_data, field_to_remove):
-    # Create test data missing specified field
-    invalid_data = valid_agent_data.copy()
+    def test_find_by_key_not_found(self, fs):
+        assert fs.find_by_key("X", "Y") is None
 
-    # Handle nested fields like provider.organization
-    del invalid_data[field_to_remove]
+    def test_find_by_name(self, fs):
+        fs.create(self._make_agent("AAA", "O1"))
+        fs.create(self._make_agent("BBB", "O2"))
+        results = fs.find_by_name("AAA")
+        assert len(results) == 1
+        assert results[0].name == "AAA"
 
-    # Attempt to register Agent with missing field
-    response = client.post("/rest/a2a-t/v1/agents/register", json=invalid_data)
+    def test_find_all(self, fs):
+        fs.create(self._make_agent("A", "O"))
+        fs.create(self._make_agent("B", "O"))
+        assert len(fs.find_all()) == 2
 
-    # Verify return status code is 422 (invalid request)
-    assert response.status_code == 422
+    def test_find_by_organization(self, fs):
+        fs.create(self._make_agent("A", "OrgX"))
+        fs.create(self._make_agent("B", "OrgY"))
+        assert len(fs.find_by_organization("OrgX")) == 1
 
-    # Verify error message contains missing field
-    error_detail = response.json()["detail"]
-    assert any(f"Field required" in error["msg"] for error in error_detail)
+    def test_find_by_status(self, fs):
+        fs.create(self._make_agent("Pub", "O"), status='published')
+        fs.create(self._make_agent("Reg", "O"), status='registered')
+        assert len(fs.find_by_status("published")) == 1
+        assert len(fs.find_by_status("registered")) == 1
+
+    def test_update_success(self, fs):
+        fs.create(self._make_agent("U", "O"))
+        data = {"name": "U", "provider": {"organization": "O", "url": "https://y.com"},
+                "description": "new", "version": "2", "skills": [], "capabilities": {},
+                "default_input_modes": [], "default_output_modes": []}
+        assert fs.update("U", "O", data) is True
+
+    def test_update_not_found(self, fs):
+        assert fs.update("X", "Y", {"name": "X"}) is False
+
+    def test_update_updates_status(self, fs):
+        fs.create(self._make_agent("Us", "O"), status='published')
+        data = {"name": "Us", "provider": {"organization": "O", "url": "https://y.com"},
+                "description": "new", "version": "2", "skills": [], "capabilities": {},
+                "default_input_modes": [], "default_output_modes": []}
+        fs.update("Us", "O", data)
+        fs.update_status("Us", "O", "registered")
+        assert fs.find_by_key("Us", "O").status == "registered"
+
+    def test_delete_success(self, fs):
+        fs.create(self._make_agent("D", "O"))
+        assert fs.delete("D", "O") is True
+        key = ("D", "O")
+        assert key not in fs._agents
+
+    def test_delete_not_found(self, fs):
+        assert fs.delete("X", "Y") is False
+
+    def test_persistence_roundtrip(self, temp_dir):
+        from agent_registry.persistence.file_storage import FileStorage
+        fp = os.path.join(temp_dir, "agents.json")
+        mf = os.path.join(temp_dir, "registry.json")
+        tf = os.path.join(temp_dir, "tags.json")
+        fs1 = FileStorage(fp, mf, tf)
+        fs1.create(self._make_agent("P", "O"), owner="o1")
+        fs1.update_agent_tags("P", "O", ["t1"])
+        fs2 = FileStorage(fp, mf, tf)
+        record = fs2.find_by_key("P", "O")
+        assert record is not None
+        assert record.owner == "o1"
+        assert record.tags == ["t1"]
+
+    def test_count(self, fs):
+        assert fs.count() == 0
+        fs.create(self._make_agent("A", "O"))
+        assert fs.count() == 1
+
+    def test_find_by_owner(self, fs):
+        fs.create(self._make_agent("A1", "O1"), owner="x")
+        fs.create(self._make_agent("A2", "O2"), owner="y")
+        results = fs.find_by_owner("x")
+        assert len(results) == 1
+        assert results[0].agent_card.name == "A1"
+
+    def test_find_by_tag(self, fs):
+        fs.create(self._make_agent("A1", "O1"))
+        fs.create(self._make_agent("A2", "O2"))
+        fs.update_agent_tags("A1", "O1", ["prod"])
+        fs.update_agent_tags("A2", "O2", ["dev"])
+        agents = fs.find_by_tag("prod")
+        assert len(agents) == 1
+        assert agents[0].name == "A1"
+
+    def test_update_status_direct(self, fs):
+        fs.create(self._make_agent("S", "O"), status='registered')
+        assert fs.update_status("S", "O", "published") is True
+        assert fs.find_by_key("S", "O").status == "published"
+
+    def test_get_created_at(self, fs):
+        fs.create(self._make_agent("C", "O"))
+        created = fs.get_created_at("C", "O")
+        assert created != ''
+
+    def test_get_updated_at(self, fs):
+        fs.create(self._make_agent("U", "O"))
+        updated = fs.get_updated_at("U", "O")
+        assert updated != ''

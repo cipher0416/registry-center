@@ -196,9 +196,9 @@ def validate_agent_card(agent: AgentCard):
     validate_supported_interfaces(agent.supported_interfaces)
 
 
-def validate_status(status: str):
+def validate_status(value: str):
     """Validate status field value (for agentregistry.json)"""
-    if status not in ['registered', 'published']:
+    if value not in ['registered', 'published']:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail='Agent status must be either "registered" or "published"')

@@ -183,6 +183,14 @@ class FileStorage(StorageBackend):
         logger.info(f"Deregistered agent: {name}({organization}, owner={owner})")
         return True
 
+    def get_created_at(self, name: str, organization: str) -> str:
+        key = (name.strip(), organization.strip())
+        return self._created_at_map.get(key, '')
+
+    def get_updated_at(self, name: str, organization: str) -> str:
+        key = (name.strip(), organization.strip())
+        return self._updated_at_map.get(key, '')
+
     def count(self) -> int:
         return len(self._agents)
 

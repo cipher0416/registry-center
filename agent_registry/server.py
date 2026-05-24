@@ -774,6 +774,8 @@ async def deregister_agent(
             })
             logger.info(f"Deregister agent success: name={name}, org={organization}")
             return Response(status_code=status.HTTP_200_OK)
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error in deregister: {e}")
             raise CustomHTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,"Internal server error") from e
