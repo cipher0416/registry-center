@@ -122,32 +122,45 @@ curl -X POST http://127.0.0.1:5000/rest/v1/registry-center/agent-cards \
 
 ## 架构
 
-```
-                          HTTPS / TLS
-客户端 ─────────────────────────────────────────┐
-                                                │
-┌───────────────────────────────────────────────▼──────────────────┐
-│                    FastAPI 服务器 (:5000)                          │
-│  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌────────────────────┐  │
-│  │ 流控     │ │ 签名     │ │ 所有者    │ │ 内容安全            │  │
-│  │ 限流     │ │ 验证     │ │ 隔离      │ │ (Prompt注入检测)    │  │
-│  └──────────┘ └──────────┘ └───────────┘ └────────────────────┘  │
-│                               │                                    │
-│                        RegistryCore                                │
-│                  (增删改查 + 语义检索核心)                           │
-└───────────────────────────────┬────────────────────────────────────┘
-                                │
-              ┌─────────────────┼─────────────────┐
-              ▼                 ▼                   ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│  文件存储        │ │  PostgreSQL     │ │  向量数据库      │
-│  (JSON, 默认)   │ │  (可选)         │ │  (Milvus, 可选)  │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
+```mermaid
+flowchart TB
+    subgraph clients[" "]
+        direction LR
+        rest["REST 客户端<br/>(HTTPS/TLS)"]
+        cli["CLI 管理<br/>(本地)"]
+    end
 
-              ┌─────────────────────────────────────┐
-              │  CLI (本地) ── UDS/TCP ── 内部服务  │
-              │  Agent审批、标签管理、状态查询        │
-              └─────────────────────────────────────┘
+    subgraph server["注册中心服务"]
+        direction TB
+        mw["安全中间件<br/>流控限流 · 签名验证<br/>所有者隔离 · 内容安全"]
+        core["RegistryCore<br/>增删改查 · 语义检索 · 审核"]
+    end
+
+    subgraph storage["存储后端"]
+        direction LR
+        file[("文件存储<br/>JSON")]
+        pg[("PostgreSQL")]
+        milvus[("Milvus<br/>向量数据库")]
+    end
+
+    subgraph ext["外部依赖"]
+        llm["LLM 大模型"]
+        auth["认证系统<br/>(宿主提供)"]
+    end
+
+    rest -->|"REST API"| mw
+    cli -->|"UDS / TCP"| core
+    mw --> core
+    core --> file
+    core --> pg
+    core --> milvus
+    core --> llm
+    core --> auth
+
+    style server fill:#e1f5fe,stroke:#0288d1
+    style storage fill:#f3e5f5,stroke:#7b1fa2
+    style clients fill:#e8f5e9,stroke:#388e3c
+    style ext fill:#fff3e0,stroke:#f57c00
 ```
 
 ## API 概览

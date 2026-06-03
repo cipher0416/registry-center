@@ -122,32 +122,45 @@ curl -X POST http://127.0.0.1:5000/rest/v1/registry-center/agent-cards \
 
 ## Architecture
 
-```
-                          HTTPS / TLS
-Client ──────────────────────────────────────────┐
-                                                  │
-┌─────────────────────────────────────────────────▼──────────────────┐
-│                        FastAPI Server (:5000)                       │
-│  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────────────────┐  │
-│  │ Rate     │ │ Signature│ │ Owner     │ │ Content Safety       │  │
-│  │ Limiter  │ │ Verifier │ │ Isolation │ │ (Prompt Injection)   │  │
-│  └──────────┘ └──────────┘ └───────────┘ └──────────────────────┘  │
-│                               │                                      │
-│                        RegistryCore                                  │
-│                    (CRUD + Semantic Search)                           │
-└───────────────────────────────┬──────────────────────────────────────┘
-                                │
-              ┌─────────────────┼─────────────────┐
-              ▼                 ▼                   ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│  File Storage   │ │  PostgreSQL     │ │  Vector DB      │
-│  (JSON, default)│ │  (optional)     │ │  (Milvus, opt)  │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
+```mermaid
+flowchart TB
+    subgraph clients[" "]
+        direction LR
+        rest["REST Client<br/>(HTTPS/TLS)"]
+        cli["CLI Admin<br/>(local)"]
+    end
 
-              ┌─────────────────────────────────────┐
-              │  CLI (local) ── UDS/TCP ── Internal │
-              │  agent approval, tags, management    │
-              └─────────────────────────────────────┘
+    subgraph server["Registry Center Server"]
+        direction TB
+        mw["Security Middleware<br/>Rate Limit · Signature Verify<br/>Owner Isolation · Content Safety"]
+        core["RegistryCore<br/>CRUD · Semantic Search · Approval"]
+    end
+
+    subgraph storage["Storage Backends"]
+        direction LR
+        file[("File<br/>JSON")]
+        pg[("PostgreSQL")]
+        milvus[("Milvus<br/>Vector DB")]
+    end
+
+    subgraph ext["External"]
+        llm["LLM Provider"]
+        auth["Auth System<br/>(Host-provided)"]
+    end
+
+    rest -->|"REST API"| mw
+    cli -->|"UDS / TCP"| core
+    mw --> core
+    core --> file
+    core --> pg
+    core --> milvus
+    core --> llm
+    core --> auth
+
+    style server fill:#e1f5fe,stroke:#0288d1
+    style storage fill:#f3e5f5,stroke:#7b1fa2
+    style clients fill:#e8f5e9,stroke:#388e3c
+    style ext fill:#fff3e0,stroke:#f57c00
 ```
 
 ## API Overview
